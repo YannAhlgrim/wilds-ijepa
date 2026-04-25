@@ -83,7 +83,6 @@ def main(args, resume_preempt=False):
     pin_mem = args["data"]["pin_mem"]
     num_workers = args["data"]["num_workers"]
     root_path = args["data"]["root_path"]
-    image_folder = args["data"]["image_folder"]
     crop_size = args["data"]["crop_size"]
     crop_scale = args["data"]["crop_scale"]
     # --
