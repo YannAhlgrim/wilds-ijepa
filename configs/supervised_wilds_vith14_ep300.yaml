@@ -2,7 +2,8 @@ meta:
   model_name: vit_huge
   embed_dim: 1280
   load_checkpoint: true
-  read_checkpoint: jepa-latest.pth.tar
+  checkpoint_folder: experiment_logs/wilds-vith14.224-bs.128-ep.300/
+  read_checkpoint: jepa-ep300.pth.tar
   use_bfloat16: true
   num_classes: 182
 
@@ -12,23 +13,31 @@ data:
   num_workers: 10
   pin_mem: true
   crop_size: 224
+  crop_scale: [0.3, 1.0]
+  use_horizontal_flip: false
+  use_color_distortion: false
+  color_jitter_strength: 0.0
+  use_gaussian_blur: false
+
+mask:
+  patch_size: 14
 
 optimization:
   optimizer: adamw # 'adamw' or 'sgd'
   freeze_weights: true # true for linear probing, false for full fine-tuning
-  epochs: 200 # can be set higher if early_stopping
-  lr: 0.001
-  weight_decay: 0.05
-  use_cosine_schedule: false
+  epochs: 300 # can be set higher if early_stopping
+  lr: 5.0e-4
+  weight_decay: 1.0e-2
+  use_cosine_schedule: true
   start_lr: 0.0001
   final_lr: 1.0e-06
   warmup: 5
   ipe_scale: 1.0
   early_stopping:
     enabled: true
-    patience: 6
-    min_delta: 0.0
-    min_epochs: 5
+    patience: 10
+    min_delta: 1.0e-4
+    min_epochs: 15
     restore_best_weights: true
 
 validation:
