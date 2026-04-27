@@ -16,13 +16,23 @@ data:
 optimization:
   optimizer: adamw # 'adamw' or 'sgd'
   freeze_weights: true # true for linear probing, false for full fine-tuning
-  epochs: 50
+  epochs: 200 # can be set higher if early_stopping
   lr: 0.001
   weight_decay: 0.05
+  use_cosine_schedule: false
   start_lr: 0.0001
   final_lr: 1.0e-06
   warmup: 5
   ipe_scale: 1.0
+  early_stopping:
+    enabled: true
+    patience: 6
+    min_delta: 0.0
+    min_epochs: 5
+    restore_best_weights: true
+
+validation:
+  eval_every: 1
 
 logging:
   folder: experiment_logs/supervised-vith14.224-bs.128-ep.300/

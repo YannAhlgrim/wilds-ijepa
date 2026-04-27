@@ -13,7 +13,11 @@ class ViTClassifier(nn.Module):
 
     def forward(self, x):
         # ViT -> (B, N, D)
-        features = self.encoder(x)
+        if any(p.requires_grad for p in self.encoder.parameters()):
+            features = self.encoder(x)
+        else:
+            with torch.no_grad():
+                features = self.encoder(x)
 
         # Average Pool -> (B, D)
         avg_embed = features.mean(dim=1)

@@ -31,7 +31,7 @@ mask:
     - 0.2
 meta:
   copy_data: false
-  load_checkpoint: false
+  load_checkpoint: true
   model_name: vit_huge
   pred_depth: 12
   pred_emb_dim: 384
