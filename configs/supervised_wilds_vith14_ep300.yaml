@@ -2,7 +2,7 @@ meta:
   model_name: vit_huge
   embed_dim: 1280
   load_checkpoint: true
-  checkpoint_folder: experiment_logs/wilds-vith14.224-bs.128-ep.300/
+  checkpoint_folder: experiment_logs/vith14.224-bs.128-ep.300/
   read_checkpoint: jepa-ep300.pth.tar
   use_bfloat16: true
   num_classes: 182
