@@ -1,6 +1,7 @@
 import torch
 from logging import getLogger
 from wilds import get_dataset
+from wilds.common.data_loaders import get_eval_loader
 
 logger = getLogger()
 
@@ -48,6 +49,34 @@ def make_iwildcam(
     )
 
     return dataset, data_loader, dist_sampler
+
+
+def make_iwildcam_eval(
+    transform,
+    batch_size,
+    split="test",
+    num_workers=8,
+    root_path="./wilds_data",
+    download=True,
+    pin_mem=True,
+):
+    full_dataset = get_dataset(
+        dataset="iwildcam", download=download, root_dir=root_path
+    )
+
+    dataset = full_dataset.get_subset(split, transform=transform)
+
+    logger.info(f"iWildCam {split} eval dataset created with {len(dataset)} samples")
+
+    data_loader = get_eval_loader(
+        "standard",
+        dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_mem,
+    )
+
+    return full_dataset, dataset, data_loader
 
 
 class WildsToTorchWrapper(torch.utils.data.Dataset):

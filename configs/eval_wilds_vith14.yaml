@@ -1,0 +1,22 @@
+meta:
+  seed: 0
+  model_name: vit_huge
+  embed_dim: 1280
+  num_classes: 182
+  patch_size: 14
+  crop_size: 224
+  use_bfloat16: true
+  checkpoint_folder: experiment_logs/supervised-vith14.224-bs.128-ep.300/
+  read_checkpoint: linear_probe-best.pth.tar
+
+data:
+  batch_size: 128
+  root_path: ./wilds_data
+  num_workers: 10
+  pin_mem: true
+  split: test
+  download: true
+
+logging:
+  folder: experiment_logs/eval-wilds-vith14/
+  write_tag: iwildcam_test
