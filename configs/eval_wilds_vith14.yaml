@@ -18,5 +18,5 @@ data:
   download: true
 
 logging:
-  folder: experiment_logs/eval-wilds-vith14/
+  folder: experiment_logs/eval-wilds-vith14.224-bs.128-ep.300-lp/
   write_tag: iwildcam_test
