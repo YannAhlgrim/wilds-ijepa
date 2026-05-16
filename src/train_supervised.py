@@ -239,6 +239,7 @@ def main(args, resume_preempt=False):
         color_distortion=d_args["use_color_distortion"],
         color_jitter=d_args["color_jitter_strength"],
         gaussian_blur=d_args["use_gaussian_blur"],
+        use_random_resized_crop=d_args.get("use_random_resized_crop", True),
     )
     val_transform = make_transform_eval(
         crop_size=d_args["crop_size"],

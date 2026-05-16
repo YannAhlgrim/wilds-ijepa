@@ -78,6 +78,7 @@ def main(args, resume_preempt=False):
     use_horizontal_flip = args["data"]["use_horizontal_flip"]
     use_color_distortion = args["data"]["use_color_distortion"]
     color_jitter = args["data"]["color_jitter_strength"]
+    use_random_resized_crop = args["data"].get("use_random_resized_crop", True)
     # --
     batch_size = args["data"]["batch_size"]
     pin_mem = args["data"]["pin_mem"]
@@ -181,6 +182,7 @@ def main(args, resume_preempt=False):
         horizontal_flip=use_horizontal_flip,
         color_distortion=use_color_distortion,
         color_jitter=color_jitter,
+        use_random_resized_crop=use_random_resized_crop,
     )
 
     # -- init data-loaders/samplers

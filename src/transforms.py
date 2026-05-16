@@ -23,6 +23,7 @@ def make_transforms(
     horizontal_flip=False,
     color_distortion=False,
     gaussian_blur=False,
+    use_random_resized_crop=True,
     normalization=((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
 ):
     logger.info("making imagenet data transforms")
@@ -36,7 +37,14 @@ def make_transforms(
         return color_distort
 
     transform_list = []
-    transform_list += [transforms.RandomResizedCrop(crop_size, scale=crop_scale)]
+    if use_random_resized_crop:
+        transform_list += [transforms.RandomResizedCrop(crop_size, scale=crop_scale)]
+    else:
+        resize_size = int(crop_size * 256 / 224)
+        transform_list += [
+            transforms.Resize(resize_size),
+            transforms.CenterCrop(crop_size),
+        ]
     if horizontal_flip:
         transform_list += [transforms.RandomHorizontalFlip()]
     if color_distortion:
