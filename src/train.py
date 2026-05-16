@@ -214,11 +214,16 @@ def main(args, resume_preempt=False):
         ipe_scale=ipe_scale,
         use_bfloat16=use_bfloat16,
     )
-    encoder = DistributedDataParallel(encoder, static_graph=True)
-    predictor = DistributedDataParallel(predictor, static_graph=True)
-    target_encoder = DistributedDataParallel(target_encoder)
-    for p in target_encoder.parameters():
-        p.requires_grad = False
+    if dist.is_available() and dist.is_initialized() and world_size > 1:
+        encoder = DistributedDataParallel(encoder, static_graph=True)
+        predictor = DistributedDataParallel(predictor, static_graph=True)
+        target_encoder = DistributedDataParallel(target_encoder)
+        for p in target_encoder.parameters():
+            p.requires_grad = False
+    else:
+        logger.info("Distributed process group not initialized; running without DDP")
+        for p in target_encoder.parameters():
+            p.requires_grad = False
 
     # -- momentum schedule
     momentum_scheduler = (
