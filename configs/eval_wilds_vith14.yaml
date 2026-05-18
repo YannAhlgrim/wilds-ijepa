@@ -6,7 +6,7 @@ meta:
   patch_size: 14
   crop_size: 224
   use_bfloat16: true
-  checkpoint_folder: experiment_logs/supervised-vith14.224-bs.128-ep.300/
+  checkpoint_folder: experiment_logs/supervised-vith14.224-bs.128-ep.300-lp-0crop/
   read_checkpoint: linear_probe-best.pth.tar
 
 data:
@@ -18,5 +18,5 @@ data:
   download: true
 
 logging:
-  folder: experiment_logs/eval-wilds-vith14.224-bs.128-ep.300-lp/
+  folder: experiment_logs/eval-wilds/vith14.224-bs.128-ep.300-lp-0crop/
   write_tag: iwildcam_test
