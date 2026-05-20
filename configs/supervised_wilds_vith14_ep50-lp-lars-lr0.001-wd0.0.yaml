@@ -27,8 +27,8 @@ optimization:
   optimizer: lars # 'adamw', 'sgd', or 'lars'
   freeze_weights: true # true for linear probing, false for full fine-tuning
   epochs: 50
-  lr: 0.01
-  weight_decay: 5.0e-4
+  lr: 0.001
+  weight_decay: 0.0
   use_cosine_schedule: false
   lr_schedule: step
   step_milestones: [15, 30, 45]
@@ -52,5 +52,5 @@ validation:
   eval_every: 1
 
 logging:
-  folder: experiment_logs/supervised-vith14.224-bs.16384-ep.50-lp-lars-lr0.01-wd0.0005/
-  write_tag: linear_probe-lars-lr0.01-wd0.0005
+  folder: experiment_logs/supervised-vith14.224-bs.16384-ep.50-lp-lars-lr0.001-wd0.0/
+  write_tag: linear_probe-lars-lr0.001-wd0.0

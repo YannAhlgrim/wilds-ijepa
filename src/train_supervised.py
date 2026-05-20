@@ -16,6 +16,7 @@ from src.models.head import ViTClassifier
 from src.transforms import make_transforms, make_transform_eval
 from src.utils.distributed import init_distributed
 from src.utils.logging import CSVLogger, AverageMeter
+from src.utils.optimizers import LARS
 
 # --
 log_freq = 10
@@ -217,17 +218,38 @@ def main(args, resume_preempt=False):
         logger.info("Training full model (Fine-tuning mode)")
 
     params = [p for p in model.parameters() if p.requires_grad]
-    if o_args["optimizer"].lower() == "adamw":
+    optimizer_name = o_args["optimizer"].lower()
+    if optimizer_name == "adamw":
         optimizer = torch.optim.AdamW(
             params, lr=o_args["lr"], weight_decay=o_args["weight_decay"]
         )
+    elif optimizer_name == "lars":
+        optimizer = LARS(
+            params,
+            lr=o_args["lr"],
+            weight_decay=o_args["weight_decay"],
+            momentum=o_args.get("momentum", 0.9),
+            eta=o_args.get("lars_eta", 0.001),
+            eps=o_args.get("lars_eps", 1e-8),
+            exclude_bias_and_norm=o_args.get("lars_exclude_bias_and_norm", True),
+        )
     else:
         optimizer = torch.optim.SGD(
-            params, lr=o_args["lr"], momentum=0.9, weight_decay=o_args["weight_decay"]
+            params,
+            lr=o_args["lr"],
+            momentum=o_args.get("momentum", 0.9),
+            weight_decay=o_args["weight_decay"],
         )
 
     scheduler = None
-    if o_args["use_cosine_schedule"]:
+    lr_schedule = o_args.get("lr_schedule", "cosine").lower()
+    if lr_schedule == "step":
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer,
+            milestones=o_args.get("step_milestones", [15, 30, 45]),
+            gamma=o_args.get("step_gamma", 0.1),
+        )
+    elif o_args["use_cosine_schedule"]:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=o_args["epochs"], eta_min=o_args["final_lr"]
         )
