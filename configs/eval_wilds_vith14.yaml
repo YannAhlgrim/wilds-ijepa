@@ -6,8 +6,8 @@ meta:
   patch_size: 14
   crop_size: 224
   use_bfloat16: true
-  checkpoint_folder: experiment_logs/supervised-vith14.224-bs.128-ep.300-ft/
-  read_checkpoint: fine_tune-best.pth.tar
+  checkpoint_folder: experiment_logs/supervised-vith14.224-bs.256-ep.50-lp-lars-lr0.001-wd0.0005/
+  read_checkpoint: linear_probe-lars-lr0.001-wd0.0005-ep50.pth.tar
 
 data:
   batch_size: 128
