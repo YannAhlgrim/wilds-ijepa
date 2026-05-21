@@ -41,6 +41,9 @@ optimization:
   lars_eps: 1.0e-8
   lars_exclude_bias_and_norm: true
   ipe_scale: 1.0
+  # Sweep suggestions (manual edits):
+  # - lr: 0.01 | 0.05 | 0.001
+  # - weight_decay: 5.0e-4 | 0.0
   early_stopping:
     enabled: false
     patience: 10
