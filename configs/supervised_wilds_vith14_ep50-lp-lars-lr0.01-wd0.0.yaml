@@ -8,7 +8,7 @@ meta:
   num_classes: 182
 
 data:
-  batch_size: 16384
+  batch_size: 256
   root_path: ./wilds_data
   num_workers: 10
   pin_mem: true
@@ -52,5 +52,5 @@ validation:
   eval_every: 1
 
 logging:
-  folder: experiment_logs/supervised-vith14.224-bs.16384-ep.50-lp-lars-lr0.01-wd0.0/
+  folder: experiment_logs/supervised-vith14.224-bs.256-ep.50-lp-lars-lr0.01-wd0.0/
   write_tag: linear_probe-lars-lr0.01-wd0.0
