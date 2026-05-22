@@ -24,7 +24,7 @@ mask:
   patch_size: 14
 
 optimization:
-  optimizer: lars # 'adamw', 'sgd', or 'lars'
+  optimizer: sgd # 'adamw', 'sgd', or 'lars'
   freeze_weights: true # true for linear probing, false for full fine-tuning
   epochs: 300
   lr: 0.01
@@ -55,5 +55,5 @@ validation:
   eval_every: 1
 
 logging:
-  folder: experiment_logs/supervised-lars/
+  folder: experiment_logs/supervised-sgd/
   write_tag: linear_probe
