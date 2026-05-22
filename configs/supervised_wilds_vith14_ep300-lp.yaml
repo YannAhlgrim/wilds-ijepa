@@ -24,7 +24,7 @@ mask:
   patch_size: 14
 
 optimization:
-  optimizer: sgd # 'adamw', 'sgd', or 'lars'
+  optimizer: lars # 'adamw', 'sgd', or 'lars'
   freeze_weights: true # true for linear probing, false for full fine-tuning
   epochs: 300
   lr: 0.01
