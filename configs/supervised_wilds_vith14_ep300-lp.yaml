@@ -55,5 +55,5 @@ validation:
   eval_every: 1
 
 logging:
-  folder: experiment_logs/supervised/
-  write_tag: linear_probe-lars
+  folder: experiment_logs/supervised-lars/
+  write_tag: linear_probe
