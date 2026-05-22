@@ -7,7 +7,7 @@ meta:
   crop_size: 224
   use_bfloat16: true
   checkpoint_folder: experiment_logs/supervised/
-  read_checkpoint: linear_probe.pth.tar
+  read_checkpoint: linear_probe-best.pth.tar
 
 data:
   batch_size: 128
