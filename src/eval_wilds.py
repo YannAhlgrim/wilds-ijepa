@@ -14,6 +14,7 @@ from src.helper import init_model
 from src.models.head import ViTClassifier
 from src.transforms import make_transform_eval
 from src.utils.distributed import init_distributed
+from src.utils.logging import resolve_log_dir
 
 
 _GLOBAL_SEED = 0
@@ -74,9 +75,19 @@ def _load_model_state(model, checkpoint_path, device):
 
 
 def main(args):
-    world_size, rank = init_distributed()
+    force_single = bool(args.get("meta", {}).get("force_single_process", False))
+    if force_single:
+        world_size, rank = 1, 0
+    else:
+        world_size, rank = init_distributed()
 
-    if dist.is_available() and dist.is_initialized() and world_size > 1 and rank != 0:
+    if (
+        not force_single
+        and dist.is_available()
+        and dist.is_initialized()
+        and world_size > 1
+        and rank != 0
+    ):
         dist.barrier()
         dist.destroy_process_group()
         return
@@ -93,11 +104,13 @@ def main(args):
     else:
         device = torch.device(f"cuda:{torch.cuda.current_device()}")
 
-    folder = log_args.get("folder", "eval_logs")
+    folder = resolve_log_dir(args, stage="eval")
     tag = log_args.get("write_tag", "wilds_eval")
-    os.makedirs(folder, exist_ok=True)
 
-    with open(os.path.join(folder, "params-eval.yaml"), "w") as f:
+    params_path = os.path.join(folder, "params-eval.yaml")
+    with open(params_path, "w") as f:
+        yaml.dump(args, f)
+    with open(os.path.join(folder, "params.yaml"), "w") as f:
         yaml.dump(args, f)
 
     model_name = meta_args["model_name"]
@@ -171,7 +184,12 @@ def main(args):
     logger.info(f"Eval metrics saved to {metrics_path}")
     logger.info(f"Eval metrics: {metrics}")
 
-    if dist.is_available() and dist.is_initialized() and world_size > 1:
+    if (
+        not force_single
+        and dist.is_available()
+        and dist.is_initialized()
+        and world_size > 1
+    ):
         dist.barrier()
         dist.destroy_process_group()
 

@@ -15,8 +15,9 @@ from src.helper import init_model
 from src.models.head import ViTClassifier
 from src.transforms import make_transforms, make_transform_eval
 from src.utils.distributed import init_distributed
-from src.utils.logging import CSVLogger, AverageMeter
+from src.utils.logging import CSVLogger, AverageMeter, resolve_log_dir
 from src.utils.optimizers import LARS
+from src.eval_wilds import main as eval_wilds_main
 
 # --
 log_freq = 10
@@ -175,9 +176,8 @@ def main(args, resume_preempt=False):
     v_args = args["validation"]
     es_args = o_args["early_stopping"]
 
-    folder = l_args["folder"]
+    folder = resolve_log_dir(args, stage="train")
     tag = l_args["write_tag"]
-    os.makedirs(folder, exist_ok=True)
 
     with open(os.path.join(folder, "params-supervised.yaml"), "w") as f:
         yaml.dump(args, f)
@@ -468,6 +468,34 @@ def main(args, resume_preempt=False):
                 },
                 best_path,
             )
+
+    if rank == 0:
+        eval_args = {
+            "meta": {
+                "seed": m_args.get("seed", _GLOBAL_SEED),
+                "model_name": m_args["model_name"],
+                "embed_dim": m_args["embed_dim"],
+                "num_classes": m_args["num_classes"],
+                "patch_size": mk_args.get("patch_size", m_args.get("patch_size", 16)),
+                "crop_size": d_args.get("crop_size", m_args.get("crop_size", 224)),
+                "use_bfloat16": m_args.get("use_bfloat16", True),
+                "checkpoint_path": best_path,
+                "force_single_process": True,
+            },
+            "data": {
+                "batch_size": d_args.get("batch_size", 128),
+                "root_path": d_args.get("root_path", "./wilds_data"),
+                "num_workers": d_args.get("num_workers", 8),
+                "pin_mem": d_args.get("pin_mem", True),
+                "split": "test",
+                "download": True,
+            },
+            "logging": {
+                "write_tag": "iwildcam_test",
+                "auto_folder": True,
+            },
+        }
+        eval_wilds_main(args=eval_args)
 
 
 if __name__ == "__main__":
