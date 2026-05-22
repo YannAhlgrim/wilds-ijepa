@@ -18,5 +18,5 @@ data:
   download: true
 
 logging:
-  folder: experiment_logs/eval-wilds/vith14-ep300-adamw-ep.50-lr0.01-wd0.0005/
+  folder: experiment_logs/eval-wilds/vith14-ep300-sgd-earlystopping-lr0.01-wd0.0005/
   write_tag: iwildcam_test
