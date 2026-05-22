@@ -56,4 +56,4 @@ validation:
 
 logging:
   folder: experiment_logs/supervised/
-  write_tag: linear_probe
+  write_tag: linear_probe-lars
