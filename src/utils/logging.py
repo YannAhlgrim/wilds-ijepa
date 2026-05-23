@@ -72,7 +72,6 @@ def build_run_name(args):
     add("wd", weight_decay)
     add("ep", epochs)
     add("sched", opt_args.get("lr_schedule"))
-    add("cos", opt_args.get("use_cosine_schedule"))
     add("ms", opt_args.get("step_milestones"))
     add("sg", opt_args.get("step_gamma"))
     add("wu", opt_args.get("warmup"))

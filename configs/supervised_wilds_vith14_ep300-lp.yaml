@@ -29,7 +29,6 @@ optimization:
   epochs: 300
   lr: 0.01
   weight_decay: 5.0e-4
-  use_cosine_schedule: false
   lr_schedule: step
   step_milestones: [15, 30, 45]
   step_gamma: 0.1

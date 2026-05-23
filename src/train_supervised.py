@@ -249,7 +249,7 @@ def main(args, resume_preempt=False):
             milestones=o_args.get("step_milestones", [15, 30, 45]),
             gamma=o_args.get("step_gamma", 0.1),
         )
-    elif o_args["use_cosine_schedule"]:
+    elif lr_schedule == "cosine":
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=o_args["epochs"], eta_min=o_args["final_lr"]
         )
