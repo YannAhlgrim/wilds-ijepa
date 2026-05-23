@@ -1,0 +1,16 @@
+base_config: configs/supervised_wilds_vith14_ep300-lp.yaml
+
+constants:
+  logging.write_tag: linear_probe
+
+grid:
+  optimization.lr: [0.01, 0.05]
+  optimization.weight_decay: [0.0, 5.0e-4]
+  data.batch_size: [128, 256]
+
+launch:
+  folder: submitit_logs/
+  partition: gpu1
+  nodes: 1
+  tasks_per_node: 1
+  time: 300

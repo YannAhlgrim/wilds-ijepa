@@ -497,6 +497,14 @@ def main(args, resume_preempt=False):
         }
         eval_wilds_main(args=eval_args)
 
+        if os.path.exists(folder):
+            for fname in os.listdir(folder):
+                if fname.endswith(".pth.tar"):
+                    try:
+                        os.remove(os.path.join(folder, fname))
+                    except OSError:
+                        logger.warning(f"Could not remove checkpoint file: {fname}")
+
 
 if __name__ == "__main__":
     raise RuntimeError(

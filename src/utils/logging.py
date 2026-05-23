@@ -34,6 +34,10 @@ def _format_value(value):
         return None
     if isinstance(value, float):
         return f"{value:g}"
+    if isinstance(value, (list, tuple)):
+        return "-".join(_format_value(v) for v in value)
+    if isinstance(value, bool):
+        return "1" if value else "0"
     return str(value)
 
 
@@ -42,6 +46,7 @@ def build_run_name(args):
     data_args = args.get("data", {})
     opt_args = args.get("optimization", {})
     mask_args = args.get("mask", {})
+    val_args = args.get("validation", {})
 
     model_name = meta_args.get("model_name", "model")
     patch_size = mask_args.get("patch_size", meta_args.get("patch_size"))
@@ -52,16 +57,32 @@ def build_run_name(args):
     weight_decay = opt_args.get("weight_decay")
     epochs = opt_args.get("epochs")
 
-    parts = [
-        model_name,
-        f"p{_format_value(patch_size)}" if patch_size is not None else None,
-        f"c{_format_value(crop_size)}" if crop_size is not None else None,
-        f"bs{_format_value(batch_size)}" if batch_size is not None else None,
-        str(optimizer).lower(),
-        f"lr{_format_value(lr)}" if lr is not None else None,
-        f"wd{_format_value(weight_decay)}" if weight_decay is not None else None,
-        f"ep{_format_value(epochs)}" if epochs is not None else None,
-    ]
+    parts = [model_name]
+
+    def add(prefix, value):
+        formatted = _format_value(value)
+        if formatted is not None:
+            parts.append(f"{prefix}{formatted}")
+
+    add("p", patch_size)
+    add("c", crop_size)
+    add("bs", batch_size)
+    parts.append(str(optimizer).lower())
+    add("lr", lr)
+    add("wd", weight_decay)
+    add("ep", epochs)
+    add("sched", opt_args.get("lr_schedule"))
+    add("cos", opt_args.get("use_cosine_schedule"))
+    add("ms", opt_args.get("step_milestones"))
+    add("sg", opt_args.get("step_gamma"))
+    add("wu", opt_args.get("warmup"))
+    add("mom", opt_args.get("momentum"))
+    add("leta", opt_args.get("lars_eta"))
+    add("leps", opt_args.get("lars_eps"))
+    add("ipe", opt_args.get("ipe_scale"))
+    add("cs", data_args.get("crop_scale"))
+    add("eval", val_args.get("eval_every"))
+
     return "-".join([p for p in parts if p])
 
 
