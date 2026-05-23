@@ -96,7 +96,7 @@ def main():
         gpus_per_node=args.tasks_per_node or int(launch.get("tasks_per_node", 1)),
     )
 
-    temp_dir = tempfile.mkdtemp(prefix="grid_configs_")
+    temp_dir = tempfile.mkdtemp(prefix="grid_configs_", dir=log_folder)
 
     jobs = []
     with executor.batch():
