@@ -11,6 +11,11 @@ def _find_metric(metrics, key):
             found = _find_metric(value, key)
             if found is not None:
                 return found
+    if isinstance(metrics, list):
+        for item in metrics:
+            found = _find_metric(item, key)
+            if found is not None:
+                return found
     return None
 
 
