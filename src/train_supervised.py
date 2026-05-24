@@ -207,7 +207,14 @@ def main(args, resume_preempt=False):
     )
 
     embed_dim = m_args["embed_dim"]
-    model = ViTClassifier(encoder, m_args["num_classes"], embed_dim).to(device)
+    model = ViTClassifier(
+        encoder,
+        m_args["num_classes"],
+        embed_dim,
+        probe_type=m_args.get("probe_type", "linear"),
+        mlp_hidden_dim=m_args.get("mlp_hidden_dim"),
+        dropout=m_args.get("dropout", 0.0),
+    ).to(device)
 
     if o_args["freeze_weights"]:
         logger.info("Freezing encoder weights (Linear Probing mode)")

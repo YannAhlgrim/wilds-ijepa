@@ -127,7 +127,14 @@ def main(args):
         crop_size=crop_size,
         model_name=model_name,
     )
-    model = ViTClassifier(encoder, num_classes, embed_dim).to(device)
+    model = ViTClassifier(
+        encoder,
+        num_classes,
+        embed_dim,
+        probe_type=meta_args.get("probe_type", "linear"),
+        mlp_hidden_dim=meta_args.get("mlp_hidden_dim"),
+        dropout=meta_args.get("dropout", 0.0),
+    ).to(device)
 
     checkpoint_path = _resolve_checkpoint_path(meta_args)
     _load_model_state(model, checkpoint_path, device)
