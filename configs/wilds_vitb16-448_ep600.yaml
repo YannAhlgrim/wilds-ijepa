@@ -13,7 +13,7 @@ data:
   use_horizontal_flip: false
   use_random_resized_crop: false
 logging:
-  folder: experiment_logs/vitb16.448-bs.16-ep600-gpu1
+  folder: experiment_logs/vitb16.448-bs.16-ep.600
   write_tag: jepa
 mask:
   allow_overlap: false
