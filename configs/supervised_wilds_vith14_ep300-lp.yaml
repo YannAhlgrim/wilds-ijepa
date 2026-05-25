@@ -6,9 +6,9 @@ meta:
   read_checkpoint: jepa-ep300.pth.tar
   use_bfloat16: true
   num_classes: 182
-  probe_type: linear
+  probe_type: mlp
   mlp_hidden_dim: 1024
-  dropout: 0.0
+  dropout: 0.3
 
 data:
   batch_size: 256
@@ -27,18 +27,18 @@ mask:
   patch_size: 14
 
 optimization:
-  optimizer: lars # 'adamw', 'sgd', or 'lars'
+  optimizer: adamw # 'adamw', 'sgd', or 'lars'
   freeze_weights: true # true for linear probing, false for full fine-tuning
   epochs: 300
   lr: 0.01
   weight_decay: 5.0e-4
-  lr_schedule: step
+  lr_schedule: cosine
   step_milestones: [15, 30, 45]
   step_gamma: 0.1
   start_lr: 0.0
   final_lr: 0.0
   warmup: 0
-  momentum: 0.9
+  momentum: 0.99
   lars_eta: 0.001
   lars_eps: 1.0e-8
   lars_exclude_bias_and_norm: true
