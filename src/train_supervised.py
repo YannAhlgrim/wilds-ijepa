@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import yaml
 import logging
@@ -180,6 +181,8 @@ def main(args, resume_preempt=False):
     tag = l_args["write_tag"]
 
     with open(os.path.join(folder, "params-supervised.yaml"), "w") as f:
+        yaml.dump(args, f)
+    with open(os.path.join(folder, "params.yaml"), "w") as f:
         yaml.dump(args, f)
 
     save_path = os.path.join(folder, f"{tag}" + "-ep{epoch}.pth.tar")
@@ -504,13 +507,26 @@ def main(args, resume_preempt=False):
         }
         eval_wilds_main(args=eval_args)
 
+        eval_folder = eval_args.get("logging", {}).get("folder")
+        supervised_params = os.path.join(folder, "params-supervised.yaml")
+        if eval_folder and os.path.exists(supervised_params):
+            try:
+                shutil.copy2(
+                    supervised_params,
+                    os.path.join(eval_folder, "params-supervised.yaml"),
+                )
+                shutil.copy2(
+                    supervised_params,
+                    os.path.join(eval_folder, "params.yaml"),
+                )
+            except OSError:
+                logger.warning("Could not copy supervised params to eval folder")
+
         if os.path.exists(folder):
-            for fname in os.listdir(folder):
-                if fname.endswith(".pth.tar"):
-                    try:
-                        os.remove(os.path.join(folder, fname))
-                    except OSError:
-                        logger.warning(f"Could not remove checkpoint file: {fname}")
+            try:
+                shutil.rmtree(folder)
+            except OSError:
+                logger.warning("Could not remove supervised run folder")
 
 
 if __name__ == "__main__":
