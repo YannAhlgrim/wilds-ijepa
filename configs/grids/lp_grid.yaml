@@ -4,15 +4,15 @@ constants:
   logging.write_tag: linear_probe
 
 grid:
-  optimization.optimizer: [adamw, lars, sgd]
-  optimization.lr: [0.01, 0.05]
+  optimization.optimizer: [adamw]
+  optimization.lr: [0.01]
   optimization.weight_decay: [5.0e-4]
-  optimization.momentum: [0.9, 0.5]
-  optimization.lr_schedule: [cosine, step]
-  data.batch_size: [32, 64, 512]
-  meta.probe_type: [linear, mlp]
-  meta.mlp_hidden_dim: [1024]
-  meta.dropout: [0.0]
+  optimization.momentum: [0.9, 0.99]
+  optimization.lr_schedule: [cosine]
+  data.batch_size: [128, 256]
+  meta.probe_type: [mlp, linear]
+  meta.mlp_hidden_dim: [512, 1024, 2048]
+  meta.dropout: [0.0, 0.1, 0.3]
 
 launch:
   folder: submitit_logs/
