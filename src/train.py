@@ -107,6 +107,7 @@ def main(args, resume_preempt=False):
     ipe_scale = args["optimization"]["ipe_scale"]  # scheduler scale factor (def: 1.0)
     wd = float(args["optimization"]["weight_decay"])
     final_wd = float(args["optimization"]["final_weight_decay"])
+    wd_schedule = args["optimization"].get("wd_schedule", "cosine")
     num_epochs = args["optimization"]["epochs"]
     warmup = args["optimization"]["warmup"]
     start_lr = args["optimization"]["start_lr"]
@@ -214,6 +215,7 @@ def main(args, resume_preempt=False):
         num_epochs=num_epochs,
         ipe_scale=ipe_scale,
         use_bfloat16=use_bfloat16,
+        wd_schedule=wd_schedule,
     )
     if dist.is_available() and dist.is_initialized() and world_size > 1:
         encoder = DistributedDataParallel(encoder, static_graph=True)

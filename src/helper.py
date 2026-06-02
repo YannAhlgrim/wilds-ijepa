@@ -13,7 +13,8 @@ import torch
 import src.models.vision_transformer as vit
 from src.utils.schedulers import (
     WarmupCosineSchedule,
-    CosineWDSchedule)
+    CosineWDSchedule,
+    LinearWDSchedule)
 from src.utils.tensors import trunc_normal_
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -116,7 +117,8 @@ def init_opt(
     final_wd=1e-6,
     final_lr=0.0,
     use_bfloat16=False,
-    ipe_scale=1.25
+    ipe_scale=1.25,
+    wd_schedule='cosine'
 ):
     param_groups = [
         {
@@ -147,10 +149,20 @@ def init_opt(
         ref_lr=ref_lr,
         final_lr=final_lr,
         T_max=int(ipe_scale*num_epochs*iterations_per_epoch))
-    wd_scheduler = CosineWDSchedule(
-        optimizer,
-        ref_wd=wd,
-        final_wd=final_wd,
-        T_max=int(ipe_scale*num_epochs*iterations_per_epoch))
+    wd_schedule = str(wd_schedule).lower()
+    if wd_schedule == 'linear':
+        logger.info('Using linear weight-decay schedule')
+        wd_scheduler = LinearWDSchedule(
+            optimizer,
+            ref_wd=wd,
+            final_wd=final_wd,
+            T_max=int(ipe_scale*num_epochs*iterations_per_epoch))
+    else:
+        logger.info('Using cosine weight-decay schedule')
+        wd_scheduler = CosineWDSchedule(
+            optimizer,
+            ref_wd=wd,
+            final_wd=final_wd,
+            T_max=int(ipe_scale*num_epochs*iterations_per_epoch))
     scaler = torch.cuda.amp.GradScaler() if use_bfloat16 else None
     return optimizer, scaler, scheduler, wd_scheduler

@@ -1,5 +1,5 @@
 data:
-  batch_size: 16
+  batch_size: 256
   color_jitter_strength: 0.0
   crop_scale:
     - 1.0
@@ -13,7 +13,7 @@ data:
   use_horizontal_flip: false
   use_random_resized_crop: false
 logging:
-  folder: experiment_logs/vitb16.448-bs.16-ep.600
+  folder: experiment_logs/vitb16.448-bs.16-ep.600-paper
   write_tag: jepa
 mask:
   allow_overlap: false
@@ -48,6 +48,7 @@ optimization:
   final_weight_decay: 0.4
   ipe_scale: 1.0
   lr: 0.001
-  start_lr: 0.0002
-  warmup: 40
+  start_lr: 0.0001
+  warmup: 15
+  wd_schedule: linear
   weight_decay: 0.04
