@@ -49,6 +49,8 @@ def build_run_name(args):
     val_args = args.get("validation", {})
 
     model_name = meta_args.get("model_name", "model")
+    representation_type = meta_args.get("representation_type")
+    head_type = meta_args.get("head_type")
     patch_size = mask_args.get("patch_size", meta_args.get("patch_size"))
     crop_size = data_args.get("crop_size", meta_args.get("crop_size"))
     batch_size = data_args.get("batch_size")
@@ -67,6 +69,8 @@ def build_run_name(args):
     add("p", patch_size)
     add("c", crop_size)
     add("bs", batch_size)
+    add("rep", representation_type)
+    add("head", head_type)
     parts.append(str(optimizer).lower())
     add("lr", lr)
     add("wd", weight_decay)
