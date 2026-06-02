@@ -6,9 +6,8 @@ meta:
   read_checkpoint: jepa-ep300.pth.tar
   use_bfloat16: true
   num_classes: 182
-  probe_type: mlp
-  mlp_hidden_dim: 1024
-  dropout: 0.3
+  representation_type: last_avgpool
+  head_type: linear
 
 data:
   batch_size: 256

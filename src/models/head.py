@@ -8,43 +8,53 @@ class ViTClassifier(nn.Module):
         encoder,
         num_classes,
         embed_dim,
-        probe_type="linear",
-        mlp_hidden_dim=None,
-        dropout=0.0,
+        representation_type="last_avgpool",
+        head_type="linear",
     ):
         super().__init__()
         self.encoder = encoder
+        self.representation_type = str(representation_type).lower()
 
-        probe_type = str(probe_type).lower()
-        if probe_type == "linear":
-            self.head = nn.Linear(embed_dim, num_classes)
-        elif probe_type == "mlp":
-            if mlp_hidden_dim is None:
-                raise ValueError("mlp_hidden_dim must be set for probe_type='mlp'")
+        if self.representation_type == "last_avgpool":
+            in_dim = embed_dim
+        elif self.representation_type == "last4_avgpool_concat":
+            in_dim = 4 * embed_dim
+        else:
+            raise ValueError(f"Unknown representation_type: {representation_type}")
+
+        head_type = str(head_type).lower()
+        if head_type == "linear":
+            self.head = nn.Linear(in_dim, num_classes)
+        elif head_type == "bn_linear":
             self.head = nn.Sequential(
-                nn.Linear(embed_dim, mlp_hidden_dim),
-                nn.GELU(),
-                nn.Dropout(dropout),
-                nn.Linear(mlp_hidden_dim, num_classes),
+                nn.BatchNorm1d(in_dim, affine=False, eps=1e-6),
+                nn.Linear(in_dim, num_classes),
             )
         else:
-            raise ValueError(f"Unknown probe_type: {probe_type}")
+            raise ValueError(f"Unknown head_type: {head_type}")
 
         for module in self.head.modules():
             if isinstance(module, nn.Linear):
                 nn.init.trunc_normal_(module.weight, std=0.01)
                 nn.init.zeros_(module.bias)
 
-    def forward(self, x):
-        # ViT -> (B, N, D)
-        if any(p.requires_grad for p in self.encoder.parameters()):
+    def _extract_representation(self, x):
+        if self.representation_type == "last_avgpool":
             features = self.encoder(x)
+            return features.mean(dim=1)
+
+        _, layer_outputs = self.encoder(
+            x, return_layer_outputs=True, num_last_layers=4
+        )
+        pooled = [layer_tokens.mean(dim=1) for layer_tokens in layer_outputs]
+        return torch.cat(pooled, dim=-1)
+
+    def forward(self, x):
+        if any(p.requires_grad for p in self.encoder.parameters()):
+            representation = self._extract_representation(x)
         else:
             with torch.no_grad():
-                features = self.encoder(x)
+                representation = self._extract_representation(x)
 
-        # Average Pool -> (B, D)
-        avg_embed = features.mean(dim=1)
-
-        logits = self.head(avg_embed)
+        logits = self.head(representation)
         return logits

@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+import json
 import yaml
 import logging
 
@@ -177,92 +178,13 @@ def main(args, resume_preempt=False):
     v_args = args["validation"]
     es_args = o_args["early_stopping"]
 
-    folder = resolve_log_dir(args, stage="train")
+    root_folder = resolve_log_dir(args, stage="train")
     tag = l_args["write_tag"]
 
-    with open(os.path.join(folder, "params-supervised.yaml"), "w") as f:
+    with open(os.path.join(root_folder, "params-supervised.yaml"), "w") as f:
         yaml.dump(args, f)
-    with open(os.path.join(folder, "params.yaml"), "w") as f:
+    with open(os.path.join(root_folder, "params.yaml"), "w") as f:
         yaml.dump(args, f)
-
-    save_path = os.path.join(folder, f"{tag}" + "-ep{epoch}.pth.tar")
-    latest_path = os.path.join(folder, f"{tag}-latest.pth.tar")
-    best_path = os.path.join(folder, f"{tag}-best.pth.tar")
-    log_file = os.path.join(folder, f"{tag}_r{rank}.csv")
-
-    csv_logger = CSVLogger(
-        log_file,
-        ("%d", "epoch"),
-        ("%.6f", "train_loss"),
-        ("%.6f", "val_loss"),
-        ("%.6f", "val_acc"),
-        ("%.6e", "lr"),
-        ("%.6f", "best_val_loss"),
-        ("%d", "best_epoch"),
-        ("%d", "early_stop"),
-    )
-
-    encoder, _ = init_model(
-        device=device,
-        patch_size=mk_args["patch_size"],
-        crop_size=d_args["crop_size"],
-        model_name=m_args["model_name"],
-    )
-
-    embed_dim = m_args["embed_dim"]
-    model = ViTClassifier(
-        encoder,
-        m_args["num_classes"],
-        embed_dim,
-        probe_type=m_args.get("probe_type", "linear"),
-        mlp_hidden_dim=m_args.get("mlp_hidden_dim"),
-        dropout=m_args.get("dropout", 0.0),
-    ).to(device)
-
-    if o_args["freeze_weights"]:
-        logger.info("Freezing encoder weights (Linear Probing mode)")
-        for param in model.encoder.parameters():
-            param.requires_grad = False
-        model.encoder.eval()
-    else:
-        logger.info("Training full model (Fine-tuning mode)")
-
-    params = [p for p in model.parameters() if p.requires_grad]
-    optimizer_name = o_args["optimizer"].lower()
-    if optimizer_name == "adamw":
-        optimizer = torch.optim.AdamW(
-            params, lr=o_args["lr"], weight_decay=o_args["weight_decay"]
-        )
-    elif optimizer_name == "lars":
-        optimizer = LARS(
-            params,
-            lr=o_args["lr"],
-            weight_decay=o_args["weight_decay"],
-            momentum=o_args.get("momentum", 0.9),
-            eta=o_args.get("lars_eta", 0.001),
-            eps=o_args.get("lars_eps", 1e-8),
-            exclude_bias_and_norm=o_args.get("lars_exclude_bias_and_norm", True),
-        )
-    else:
-        optimizer = torch.optim.SGD(
-            params,
-            lr=o_args["lr"],
-            momentum=o_args.get("momentum", 0.9),
-            weight_decay=o_args["weight_decay"],
-        )
-
-    scheduler = None
-    lr_schedule = o_args.get("lr_schedule", "cosine").lower()
-    if lr_schedule == "step":
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer,
-            milestones=o_args.get("step_milestones", [15, 30, 45]),
-            gamma=o_args.get("step_gamma", 0.1),
-        )
-    elif lr_schedule == "cosine":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=o_args["epochs"], eta_min=o_args["final_lr"]
-        )
 
     train_transform = make_transforms(
         crop_size=d_args["crop_size"],
@@ -303,233 +225,369 @@ def main(args, resume_preempt=False):
         drop_last=False,
     )
 
+    combinations = [
+        ("last_avgpool", "linear"),
+        ("last_avgpool", "bn_linear"),
+        ("last4_avgpool_concat", "linear"),
+        ("last4_avgpool_concat", "bn_linear"),
+    ]
+
     criterion = nn.CrossEntropyLoss().to(device)
-    model = DistributedDataParallel(model, device_ids=[torch.cuda.current_device()])
-
-    early_stopper = EarlyStopping(
-        enabled=es_args["enabled"],
-        patience=es_args["patience"],
-        min_delta=es_args["min_delta"],
-        min_epochs=es_args["min_epochs"],
-        restore_best_weights=es_args["restore_best_weights"],
-    )
-
-    start_epoch = 0
-
-    checkpoint_to_load = None
-    resuming_interrupted = False
-    if os.path.exists(latest_path):
-        checkpoint_to_load = latest_path
-        resuming_interrupted = True
-    elif m_args["load_checkpoint"]:
-        r_file = m_args["read_checkpoint"]
-        checkpoint_folder = m_args["checkpoint_folder"]
-        if os.path.isabs(r_file):
-            checkpoint_to_load = r_file
-        else:
-            checkpoint_to_load = os.path.join(checkpoint_folder, r_file)
-
-    if checkpoint_to_load is not None and not os.path.exists(checkpoint_to_load):
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_to_load}")
-
-    if checkpoint_to_load and os.path.exists(checkpoint_to_load):
-        checkpoint = torch.load(checkpoint_to_load, map_location="cpu")
-        if resuming_interrupted and "model" in checkpoint:
-            model.module.load_state_dict(checkpoint["model"])
-            if "opt" in checkpoint:
-                optimizer.load_state_dict(checkpoint["opt"])
-            if scheduler is not None and "scheduler" in checkpoint:
-                scheduler.load_state_dict(checkpoint["scheduler"])
-            start_epoch = int(checkpoint.get("epoch", 0))
-            early_stopper.load_state_dict(checkpoint.get("early_stopping", {}))
-            logger.info(
-                f"Resuming training from {checkpoint_to_load} at epoch {start_epoch}"
-            )
-        else:
-            encoder_state = checkpoint.get("encoder")
-            if encoder_state is None and "model" in checkpoint:
-                encoder_state = {
-                    k.replace("encoder.", "", 1): v
-                    for k, v in checkpoint["model"].items()
-                    if k.startswith("encoder.")
-                }
-            if encoder_state is None:
-                raise KeyError(
-                    f"No encoder weights found in checkpoint: {checkpoint_to_load}"
-                )
-            encoder_state = strip_module_prefix(encoder_state)
-            msg = model.module.encoder.load_state_dict(encoder_state, strict=False)
-            logger.info(
-                f"Loaded pre-trained encoder from {checkpoint_to_load} with msg: {msg}"
-            )
-
-    def save_checkpoint(epoch, train_loss, val_loss, val_acc, is_best=False):
-        save_dict = {
-            "model": model.module.state_dict(),
-            "opt": optimizer.state_dict(),
-            "scheduler": None if scheduler is None else scheduler.state_dict(),
-            "epoch": epoch,
-            "train_loss": train_loss,
-            "val_loss": val_loss,
-            "val_acc": val_acc,
-            "args": args,
-            "early_stopping": early_stopper.state_dict(),
-        }
-        if rank == 0:
-            torch.save(save_dict, latest_path)
-            if epoch % checkpoint_freq == 0:
-                torch.save(save_dict, save_path.format(epoch=epoch))
-            if is_best:
-                torch.save(save_dict, best_path)
-
     eval_every = int(v_args["eval_every"])
+    combo_results = []
 
-    for epoch in range(start_epoch, o_args["epochs"]):
-        train_sampler.set_epoch(epoch)
-        val_sampler.set_epoch(epoch)
+    for representation_type, head_type in combinations:
+        combo_name = f"{representation_type}__{head_type}"
+        combo_folder = os.path.join(root_folder, combo_name)
+        os.makedirs(combo_folder, exist_ok=True)
 
-        model.train()
-        if o_args["freeze_weights"]:
-            model.module.encoder.eval()
+        combo_args = yaml.safe_load(yaml.dump(args))
+        combo_args.setdefault("meta", {})["representation_type"] = representation_type
+        combo_args.setdefault("meta", {})["head_type"] = head_type
 
-        loss_meter = AverageMeter()
+        with open(os.path.join(combo_folder, "params-supervised.yaml"), "w") as f:
+            yaml.dump(combo_args, f)
+        with open(os.path.join(combo_folder, "params.yaml"), "w") as f:
+            yaml.dump(combo_args, f)
 
-        for itr, (imgs, labels) in enumerate(train_loader):
-            imgs = imgs.to(device, non_blocking=True)
-            labels = labels.to(device, non_blocking=True)
+        save_path = os.path.join(combo_folder, f"{tag}" + "-ep{epoch}.pth.tar")
+        latest_path = os.path.join(combo_folder, f"{tag}-latest.pth.tar")
+        best_path = os.path.join(combo_folder, f"{tag}-best.pth.tar")
+        log_file = os.path.join(combo_folder, f"{tag}_r{rank}.csv")
 
-            with torch.cuda.amp.autocast(
-                enabled=m_args["use_bfloat16"], dtype=torch.bfloat16
-            ):
-                outputs = model(imgs)
-                loss = criterion(outputs, labels)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            loss_meter.update(loss.item(), n=labels.size(0))
-
-            if itr % log_freq == 0 and rank == 0:
-                logger.info(
-                    f"Epoch {epoch + 1} [{itr}/{len(train_loader)}] Train Loss: {loss_meter.avg:.4f}"
-                )
-
-        train_loss = distributed_average(loss_meter.avg, device)
-
-        do_eval = ((epoch + 1) % eval_every == 0) or (epoch + 1 == o_args["epochs"])
-        if do_eval:
-            val_loss, val_acc = evaluate(
-                model=model,
-                loader=val_loader,
-                criterion=criterion,
-                device=device,
-                use_bfloat16=m_args["use_bfloat16"],
-            )
-            is_best, should_stop = early_stopper.step(epoch + 1, val_loss, model.module)
-        else:
-            val_loss = float("nan")
-            val_acc = float("nan")
-            is_best, should_stop = False, False
-
-        if scheduler is not None:
-            scheduler.step()
-
-        if rank == 0:
-            logger.info(
-                f"Epoch {epoch + 1} done | train_loss={train_loss:.6f} val_loss={val_loss:.6f} val_acc={val_acc:.6f} best_val_loss={early_stopper.best_metric:.6f}"
-            )
-
-        csv_logger.log(
-            epoch + 1,
-            train_loss,
-            val_loss,
-            val_acc,
-            optimizer.param_groups[0]["lr"],
-            early_stopper.best_metric,
-            early_stopper.best_epoch,
-            int(should_stop),
+        csv_logger = CSVLogger(
+            log_file,
+            ("%d", "epoch"),
+            ("%.6f", "train_loss"),
+            ("%.6f", "val_loss"),
+            ("%.6f", "val_acc"),
+            ("%.6e", "lr"),
+            ("%.6f", "best_val_loss"),
+            ("%d", "best_epoch"),
+            ("%d", "early_stop"),
         )
 
-        save_checkpoint(epoch + 1, train_loss, val_loss, val_acc, is_best=is_best)
+        encoder, _ = init_model(
+            device=device,
+            patch_size=mk_args["patch_size"],
+            crop_size=d_args["crop_size"],
+            model_name=m_args["model_name"],
+        )
 
-        stop_tensor = torch.tensor([int(should_stop)], device=device)
-        if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
-            dist.broadcast(stop_tensor, src=0)
+        model = ViTClassifier(
+            encoder,
+            m_args["num_classes"],
+            m_args["embed_dim"],
+            representation_type=representation_type,
+            head_type=head_type,
+        ).to(device)
 
-        if bool(stop_tensor.item()):
-            if rank == 0:
-                logger.info(
-                    f"Early stopping at epoch {epoch + 1}. Best val_loss={early_stopper.best_metric:.6f} @ epoch {early_stopper.best_epoch}"
-                )
-            break
+        if o_args["freeze_weights"]:
+            logger.info(
+                f"[{combo_name}] Freezing encoder weights (Linear Probing mode)"
+            )
+            for param in model.encoder.parameters():
+                param.requires_grad = False
+            model.encoder.eval()
+        else:
+            logger.info(f"[{combo_name}] Training full model (Fine-tuning mode)")
 
-    if early_stopper.enabled and early_stopper.restore_best_weights:
-        if rank == 0:
-            logger.info("Restoring best model weights before exit")
-        early_stopper.restore(model.module, device)
-        if rank == 0:
-            torch.save(
-                {
-                    "model": model.module.state_dict(),
-                    "epoch": early_stopper.best_epoch,
-                    "val_loss": early_stopper.best_metric,
-                    "args": args,
-                },
-                best_path,
+        params = [p for p in model.parameters() if p.requires_grad]
+        optimizer_name = o_args["optimizer"].lower()
+        if optimizer_name == "adamw":
+            optimizer = torch.optim.AdamW(
+                params, lr=o_args["lr"], weight_decay=o_args["weight_decay"]
+            )
+        elif optimizer_name == "lars":
+            optimizer = LARS(
+                params,
+                lr=o_args["lr"],
+                weight_decay=o_args["weight_decay"],
+                momentum=o_args.get("momentum", 0.9),
+                eta=o_args.get("lars_eta", 0.001),
+                eps=o_args.get("lars_eps", 1e-8),
+                exclude_bias_and_norm=o_args.get("lars_exclude_bias_and_norm", True),
+            )
+        else:
+            optimizer = torch.optim.SGD(
+                params,
+                lr=o_args["lr"],
+                momentum=o_args.get("momentum", 0.9),
+                weight_decay=o_args["weight_decay"],
             )
 
-    if rank == 0:
-        eval_args = {
-            "meta": {
-                "seed": m_args.get("seed", _GLOBAL_SEED),
-                "model_name": m_args["model_name"],
-                "embed_dim": m_args["embed_dim"],
-                "num_classes": m_args["num_classes"],
-                "patch_size": mk_args.get("patch_size", m_args.get("patch_size", 16)),
-                "crop_size": d_args.get("crop_size", m_args.get("crop_size", 224)),
-                "use_bfloat16": m_args.get("use_bfloat16", True),
-                "probe_type": m_args.get("probe_type", "linear"),
-                "mlp_hidden_dim": m_args.get("mlp_hidden_dim"),
-                "dropout": m_args.get("dropout", 0.0),
-                "checkpoint_path": best_path,
-                "force_single_process": True,
-            },
-            "data": {
-                "batch_size": d_args.get("batch_size", 128),
-                "root_path": d_args.get("root_path", "./wilds_data"),
-                "num_workers": d_args.get("num_workers", 8),
-                "pin_mem": d_args.get("pin_mem", True),
-                "split": "test",
-                "download": True,
-            },
-            "logging": {
-                "write_tag": "iwildcam_test",
-                "auto_folder": True,
-            },
+        scheduler = None
+        lr_schedule = o_args.get("lr_schedule", "cosine").lower()
+        if lr_schedule == "step":
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                optimizer,
+                milestones=o_args.get("step_milestones", [15, 30, 45]),
+                gamma=o_args.get("step_gamma", 0.1),
+            )
+        elif lr_schedule == "cosine":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=o_args["epochs"], eta_min=o_args["final_lr"]
+            )
+
+        model = DistributedDataParallel(model, device_ids=[torch.cuda.current_device()])
+
+        early_stopper = EarlyStopping(
+            enabled=es_args["enabled"],
+            patience=es_args["patience"],
+            min_delta=es_args["min_delta"],
+            min_epochs=es_args["min_epochs"],
+            restore_best_weights=es_args["restore_best_weights"],
+        )
+
+        start_epoch = 0
+
+        checkpoint_to_load = None
+        resuming_interrupted = False
+        if os.path.exists(latest_path):
+            checkpoint_to_load = latest_path
+            resuming_interrupted = True
+        elif m_args["load_checkpoint"]:
+            r_file = m_args["read_checkpoint"]
+            checkpoint_folder = m_args["checkpoint_folder"]
+            if os.path.isabs(r_file):
+                checkpoint_to_load = r_file
+            else:
+                checkpoint_to_load = os.path.join(checkpoint_folder, r_file)
+
+        if checkpoint_to_load is not None and not os.path.exists(checkpoint_to_load):
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_to_load}")
+
+        if checkpoint_to_load and os.path.exists(checkpoint_to_load):
+            checkpoint = torch.load(checkpoint_to_load, map_location="cpu")
+            if resuming_interrupted and "model" in checkpoint:
+                model.module.load_state_dict(checkpoint["model"])
+                if "opt" in checkpoint:
+                    optimizer.load_state_dict(checkpoint["opt"])
+                if scheduler is not None and "scheduler" in checkpoint:
+                    scheduler.load_state_dict(checkpoint["scheduler"])
+                start_epoch = int(checkpoint.get("epoch", 0))
+                early_stopper.load_state_dict(checkpoint.get("early_stopping", {}))
+                logger.info(
+                    f"[{combo_name}] Resuming training from {checkpoint_to_load} at epoch {start_epoch}"
+                )
+            else:
+                encoder_state = checkpoint.get("encoder")
+                if encoder_state is None and "model" in checkpoint:
+                    encoder_state = {
+                        k.replace("encoder.", "", 1): v
+                        for k, v in checkpoint["model"].items()
+                        if k.startswith("encoder.")
+                    }
+                if encoder_state is None:
+                    raise KeyError(
+                        f"No encoder weights found in checkpoint: {checkpoint_to_load}"
+                    )
+                encoder_state = strip_module_prefix(encoder_state)
+                msg = model.module.encoder.load_state_dict(encoder_state, strict=False)
+                logger.info(
+                    f"[{combo_name}] Loaded pre-trained encoder from {checkpoint_to_load} with msg: {msg}"
+                )
+
+        def save_checkpoint(epoch, train_loss, val_loss, val_acc, is_best=False):
+            save_dict = {
+                "model": model.module.state_dict(),
+                "opt": optimizer.state_dict(),
+                "scheduler": None if scheduler is None else scheduler.state_dict(),
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "args": combo_args,
+                "early_stopping": early_stopper.state_dict(),
+            }
+            if rank == 0:
+                torch.save(save_dict, latest_path)
+                if epoch % checkpoint_freq == 0:
+                    torch.save(save_dict, save_path.format(epoch=epoch))
+                if is_best:
+                    torch.save(save_dict, best_path)
+
+        for epoch in range(start_epoch, o_args["epochs"]):
+            train_sampler.set_epoch(epoch)
+            val_sampler.set_epoch(epoch)
+
+            model.train()
+            if o_args["freeze_weights"]:
+                model.module.encoder.eval()
+
+            loss_meter = AverageMeter()
+
+            for itr, (imgs, labels) in enumerate(train_loader):
+                imgs = imgs.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
+
+                with torch.cuda.amp.autocast(
+                    enabled=m_args["use_bfloat16"], dtype=torch.bfloat16
+                ):
+                    outputs = model(imgs)
+                    loss = criterion(outputs, labels)
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                loss_meter.update(loss.item(), n=labels.size(0))
+
+                if itr % log_freq == 0 and rank == 0:
+                    logger.info(
+                        f"[{combo_name}] Epoch {epoch + 1} [{itr}/{len(train_loader)}] Train Loss: {loss_meter.avg:.4f}"
+                    )
+
+            train_loss = distributed_average(loss_meter.avg, device)
+
+            do_eval = ((epoch + 1) % eval_every == 0) or (
+                epoch + 1 == o_args["epochs"]
+            )
+            if do_eval:
+                val_loss, val_acc = evaluate(
+                    model=model,
+                    loader=val_loader,
+                    criterion=criterion,
+                    device=device,
+                    use_bfloat16=m_args["use_bfloat16"],
+                )
+                is_best, should_stop = early_stopper.step(
+                    epoch + 1, val_loss, model.module
+                )
+            else:
+                val_loss = float("nan")
+                val_acc = float("nan")
+                is_best, should_stop = False, False
+
+            if scheduler is not None:
+                scheduler.step()
+
+            if rank == 0:
+                logger.info(
+                    f"[{combo_name}] Epoch {epoch + 1} done | train_loss={train_loss:.6f} val_loss={val_loss:.6f} val_acc={val_acc:.6f} best_val_loss={early_stopper.best_metric:.6f}"
+                )
+
+            csv_logger.log(
+                epoch + 1,
+                train_loss,
+                val_loss,
+                val_acc,
+                optimizer.param_groups[0]["lr"],
+                early_stopper.best_metric,
+                early_stopper.best_epoch,
+                int(should_stop),
+            )
+
+            save_checkpoint(epoch + 1, train_loss, val_loss, val_acc, is_best=is_best)
+
+            stop_tensor = torch.tensor([int(should_stop)], device=device)
+            if (
+                dist.is_available()
+                and dist.is_initialized()
+                and dist.get_world_size() > 1
+            ):
+                dist.broadcast(stop_tensor, src=0)
+
+            if bool(stop_tensor.item()):
+                if rank == 0:
+                    logger.info(
+                        f"[{combo_name}] Early stopping at epoch {epoch + 1}. Best val_loss={early_stopper.best_metric:.6f} @ epoch {early_stopper.best_epoch}"
+                    )
+                break
+
+        if early_stopper.enabled and early_stopper.restore_best_weights:
+            if rank == 0:
+                logger.info(f"[{combo_name}] Restoring best model weights before exit")
+            early_stopper.restore(model.module, device)
+            if rank == 0:
+                torch.save(
+                    {
+                        "model": model.module.state_dict(),
+                        "epoch": early_stopper.best_epoch,
+                        "val_loss": early_stopper.best_metric,
+                        "args": combo_args,
+                    },
+                    best_path,
+                )
+
+        combo_result = {
+            "representation_type": representation_type,
+            "head_type": head_type,
+            "combo_name": combo_name,
+            "best_val_loss": float(early_stopper.best_metric),
+            "best_epoch": int(early_stopper.best_epoch),
+            "best_checkpoint": best_path,
+            "train_folder": combo_folder,
         }
-        eval_wilds_main(args=eval_args)
 
-        eval_folder = eval_args.get("logging", {}).get("folder")
-        supervised_params = os.path.join(folder, "params-supervised.yaml")
-        if eval_folder and os.path.exists(supervised_params):
-            try:
-                shutil.copy2(
-                    supervised_params,
-                    os.path.join(eval_folder, "params-supervised.yaml"),
-                )
-                shutil.copy2(
-                    supervised_params,
-                    os.path.join(eval_folder, "params.yaml"),
-                )
-            except OSError:
-                logger.warning("Could not copy supervised params to eval folder")
+        if rank == 0:
+            eval_args = {
+                "meta": {
+                    "seed": m_args.get("seed", _GLOBAL_SEED),
+                    "model_name": m_args["model_name"],
+                    "embed_dim": m_args["embed_dim"],
+                    "num_classes": m_args["num_classes"],
+                    "patch_size": mk_args.get(
+                        "patch_size", m_args.get("patch_size", 16)
+                    ),
+                    "crop_size": d_args.get("crop_size", m_args.get("crop_size", 224)),
+                    "use_bfloat16": m_args.get("use_bfloat16", True),
+                    "representation_type": representation_type,
+                    "head_type": head_type,
+                    "checkpoint_path": best_path,
+                    "force_single_process": True,
+                },
+                "data": {
+                    "batch_size": d_args.get("batch_size", 128),
+                    "root_path": d_args.get("root_path", "./wilds_data"),
+                    "num_workers": d_args.get("num_workers", 8),
+                    "pin_mem": d_args.get("pin_mem", True),
+                    "split": "test",
+                    "download": True,
+                },
+                "logging": {
+                    "write_tag": "iwildcam_test",
+                    "auto_folder": True,
+                },
+            }
+            eval_result = eval_wilds_main(args=eval_args)
+            eval_folder = eval_args.get("logging", {}).get("folder")
+            supervised_params = os.path.join(combo_folder, "params-supervised.yaml")
+            if eval_folder and os.path.exists(supervised_params):
+                try:
+                    shutil.copy2(
+                        supervised_params,
+                        os.path.join(eval_folder, "params-supervised.yaml"),
+                    )
+                    shutil.copy2(
+                        supervised_params,
+                        os.path.join(eval_folder, "params.yaml"),
+                    )
+                except OSError:
+                    logger.warning("Could not copy supervised params to eval folder")
 
-        if os.path.exists(folder):
-            try:
-                shutil.rmtree(folder)
-            except OSError:
-                logger.warning("Could not remove supervised run folder")
+            combo_result["eval"] = eval_result
+
+        combo_results.append(combo_result)
+
+        if (
+            dist.is_available()
+            and dist.is_initialized()
+            and dist.get_world_size() > 1
+        ):
+            dist.barrier()
+
+    if rank == 0:
+        best_combo = min(combo_results, key=lambda r: r["best_val_loss"])
+        summary = {
+            "protocol": "ijepa_linear_probe_best_of_4",
+            "combinations": combo_results,
+            "best_by_val_loss": best_combo,
+        }
+        summary_path = os.path.join(root_folder, "ijepa_linear_probe_summary.json")
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2, sort_keys=True)
+        logger.info(f"Saved IJEPA LP summary to {summary_path}")
 
 
 if __name__ == "__main__":

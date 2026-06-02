@@ -398,7 +398,13 @@ class VisionTransformer(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x, masks=None):
+    def forward(
+        self,
+        x,
+        masks=None,
+        return_layer_outputs=False,
+        num_last_layers=4,
+    ):
         if masks is not None:
             if not isinstance(masks, list):
                 masks = [masks]
@@ -416,11 +422,20 @@ class VisionTransformer(nn.Module):
             x = apply_masks(x, masks)
 
         # -- fwd prop
+        layer_outputs = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
+            if return_layer_outputs:
+                layer_outputs.append(x)
 
         if self.norm is not None:
             x = self.norm(x)
+            if return_layer_outputs:
+                layer_outputs = [self.norm(t) for t in layer_outputs]
+
+        if return_layer_outputs:
+            k = min(int(num_last_layers), len(layer_outputs))
+            return x, layer_outputs[-k:]
 
         return x
 

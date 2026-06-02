@@ -131,9 +131,8 @@ def main(args):
         encoder,
         num_classes,
         embed_dim,
-        probe_type=meta_args.get("probe_type", "linear"),
-        mlp_hidden_dim=meta_args.get("mlp_hidden_dim"),
-        dropout=meta_args.get("dropout", 0.0),
+        representation_type=meta_args.get("representation_type", "last_avgpool"),
+        head_type=meta_args.get("head_type", "linear"),
     ).to(device)
 
     checkpoint_path = _resolve_checkpoint_path(meta_args)
@@ -199,6 +198,12 @@ def main(args):
     ):
         dist.barrier()
         dist.destroy_process_group()
+
+    return {
+        "metrics": metrics,
+        "metrics_path": metrics_path,
+        "folder": folder,
+    }
 
 
 if __name__ == "__main__":

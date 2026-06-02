@@ -6,9 +6,8 @@ meta:
   patch_size: 14
   crop_size: 224
   use_bfloat16: true
-  probe_type: linear
-  mlp_hidden_dim:
-  dropout: 0.0
+  representation_type: last_avgpool
+  head_type: linear
   checkpoint_folder: experiment_logs/supervised/
   read_checkpoint: linear_probe-best.pth.tar
 
