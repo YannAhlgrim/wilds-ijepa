@@ -3,7 +3,7 @@ meta:
   embed_dim: 768
   load_checkpoint: true
   checkpoint_folder: experiment_logs/vitb16.448-bs.16-ep.600/
-  read_checkpoint: jepa-ep100.pth.tar
+  read_checkpoint: jepa-ep150.pth.tar
   use_bfloat16: true
   num_classes: 182
   probe_type: linear
