@@ -11,6 +11,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint as _checkpoint
 
 from src.utils.tensors import (
     trunc_normal_,
@@ -80,6 +81,12 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+
+def _maybe_checkpoint(blk, x, use_checkpoint, training):
+    if use_checkpoint and training and x.requires_grad:
+        return _checkpoint(blk, x, use_reentrant=False)
+    return blk(x)
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
@@ -234,9 +241,11 @@ class VisionTransformerPredictor(nn.Module):
         drop_path_rate=0.0,
         norm_layer=nn.LayerNorm,
         init_std=0.02,
+        use_checkpoint=False,
         **kwargs
     ):
         super().__init__()
+        self.use_checkpoint = use_checkpoint
         self.predictor_embed = nn.Linear(embed_dim, predictor_embed_dim, bias=True)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, predictor_embed_dim))
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
@@ -316,7 +325,7 @@ class VisionTransformerPredictor(nn.Module):
 
         # -- fwd prop
         for blk in self.predictor_blocks:
-            x = blk(x)
+            x = _maybe_checkpoint(blk, x, self.use_checkpoint, self.training)
         x = self.predictor_norm(x)
 
         # -- return preds for mask tokens
@@ -346,11 +355,13 @@ class VisionTransformer(nn.Module):
         drop_path_rate=0.0,
         norm_layer=nn.LayerNorm,
         init_std=0.02,
+        use_checkpoint=False,
         **kwargs
     ):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
         self.num_heads = num_heads
+        self.use_checkpoint = use_checkpoint
         # --
         self.patch_embed = PatchEmbed(
             img_size=img_size[0],
@@ -424,7 +435,7 @@ class VisionTransformer(nn.Module):
         # -- fwd prop
         layer_outputs = []
         for i, blk in enumerate(self.blocks):
-            x = blk(x)
+            x = _maybe_checkpoint(blk, x, self.use_checkpoint, self.training)
             if return_layer_outputs:
                 layer_outputs.append(x)
 

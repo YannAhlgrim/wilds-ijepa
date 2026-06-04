@@ -63,6 +63,7 @@ def main(args, resume_preempt=False):
     # -- META
     use_bfloat16 = args["meta"]["use_bfloat16"]
     model_name = args["meta"]["model_name"]
+    use_gradient_checkpointing = args["meta"].get("use_gradient_checkpointing", False)
     load_model = args["meta"]["load_checkpoint"] or resume_preempt
     r_file = args["meta"]["read_checkpoint"]
     copy_data = args["meta"]["copy_data"]
@@ -161,6 +162,7 @@ def main(args, resume_preempt=False):
         pred_depth=pred_depth,
         pred_emb_dim=pred_emb_dim,
         model_name=model_name,
+        use_gradient_checkpointing=use_gradient_checkpointing,
     )
     target_encoder = copy.deepcopy(encoder)
 
@@ -339,7 +341,7 @@ def main(args, resume_preempt=False):
                     loss.backward()
                     optimizer.step()
                 grad_stats = grad_logger(encoder.named_parameters())
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
                 # Step 3. momentum update of target encoder
                 with torch.no_grad():

@@ -72,17 +72,20 @@ def init_model(
     model_name='vit_base',
     crop_size=224,
     pred_depth=6,
-    pred_emb_dim=384
+    pred_emb_dim=384,
+    use_gradient_checkpointing=False
 ):
     encoder = vit.__dict__[model_name](
         img_size=[crop_size],
-        patch_size=patch_size)
+        patch_size=patch_size,
+        use_checkpoint=use_gradient_checkpointing)
     predictor = vit.__dict__['vit_predictor'](
         num_patches=encoder.patch_embed.num_patches,
         embed_dim=encoder.embed_dim,
         predictor_embed_dim=pred_emb_dim,
         depth=pred_depth,
-        num_heads=encoder.num_heads)
+        num_heads=encoder.num_heads,
+        use_checkpoint=use_gradient_checkpointing)
 
     def init_weights(m):
         if isinstance(m, torch.nn.Linear):
