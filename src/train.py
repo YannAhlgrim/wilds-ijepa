@@ -114,6 +114,7 @@ def main(args, resume_preempt=False):
     start_lr = args["optimization"]["start_lr"]
     lr = args["optimization"]["lr"]
     final_lr = args["optimization"]["final_lr"]
+    accum_steps = args["optimization"].get("gradient_accumulation_steps", 1)
 
     # -- LOGGING
     folder = args["logging"]["folder"]
@@ -275,6 +276,7 @@ def main(args, resume_preempt=False):
                 torch.save(save_dict, save_path.format(epoch=f"{epoch + 1}"))
 
     # -- TRAINING LOOP
+    optimizer.zero_grad()
     for epoch in range(start_epoch, num_epochs):
         logger.info("Epoch %d" % (epoch + 1))
 
@@ -300,10 +302,6 @@ def main(args, resume_preempt=False):
             maskB_meter.update(len(masks_pred[0][0]))
 
             def train_step():
-                _new_lr = scheduler.step()
-                _new_wd = wd_scheduler.step()
-                # --
-
                 def forward_target():
                     with torch.no_grad():
                         h = target_encoder(imgs)
@@ -332,24 +330,28 @@ def main(args, resume_preempt=False):
                     z = forward_context()
                     loss = loss_fn(z, h)
 
-                #  Step 2. Backward & step
-                if use_bfloat16:
-                    scaler.scale(loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    optimizer.step()
-                grad_stats = grad_logger(encoder.named_parameters())
-                optimizer.zero_grad(set_to_none=True)
+                # Step 2. Backward (accumulate gradients)
+                (loss / accum_steps).backward()
 
-                # Step 3. momentum update of target encoder
-                with torch.no_grad():
-                    m = next(momentum_scheduler)
-                    for param_q, param_k in zip(
-                        encoder.parameters(), target_encoder.parameters()
-                    ):
-                        param_k.data.mul_(m).add_((1.0 - m) * param_q.detach().data)
+                # Step 3. Optimizer / scheduler / momentum (every accum_steps)
+                is_accumulated = ((itr + 1) % accum_steps == 0)
+                if is_accumulated:
+                    _new_lr = scheduler.step()
+                    _new_wd = wd_scheduler.step()
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                    grad_stats = grad_logger(encoder.named_parameters())
+
+                    with torch.no_grad():
+                        m = next(momentum_scheduler)
+                        for param_q, param_k in zip(
+                            encoder.parameters(), target_encoder.parameters()
+                        ):
+                            param_k.data.mul_(m).add_((1.0 - m) * param_q.detach().data)
+                else:
+                    _new_lr = None
+                    _new_wd = None
+                    grad_stats = None
 
                 return (float(loss), _new_lr, _new_wd, grad_stats)
 
@@ -363,6 +365,8 @@ def main(args, resume_preempt=False):
                     epoch + 1, itr, loss, maskA_meter.val, maskB_meter.val, etime
                 )
                 if (itr % log_freq == 0) or np.isnan(loss) or np.isinf(loss):
+                    lr_to_log = _new_lr if _new_lr is not None else 0.
+                    wd_to_log = _new_wd if _new_wd is not None else 0.
                     logger.info(
                         "[%d, %5d] loss: %.3f "
                         "masks: %.1f %.1f "
@@ -375,8 +379,8 @@ def main(args, resume_preempt=False):
                             loss_meter.avg,
                             maskA_meter.avg,
                             maskB_meter.avg,
-                            _new_wd,
-                            _new_lr,
+                            wd_to_log,
+                            lr_to_log,
                             torch.cuda.max_memory_allocated() / 1024.0**2,
                             time_meter.avg,
                         )
