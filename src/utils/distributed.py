@@ -6,6 +6,7 @@
 #
 
 import os
+import socket
 
 import torch
 import torch.distributed as dist
@@ -15,33 +16,40 @@ from logging import getLogger
 logger = getLogger()
 
 
-def init_distributed(port=40112, rank_and_world_size=(None, None)):
+def _find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
+
+
+def init_distributed(port=None, rank_and_world_size=(None, None)):
 
     if dist.is_available() and dist.is_initialized():
         return dist.get_world_size(), dist.get_rank()
 
     rank, world_size = rank_and_world_size
-    os.environ['MASTER_ADDR'] = 'localhost'
 
     if (rank is None) or (world_size is None):
         try:
             world_size = int(os.environ['SLURM_NTASKS'])
             rank = int(os.environ['SLURM_PROCID'])
-            os.environ['MASTER_ADDR'] = os.environ['HOSTNAME']
         except Exception:
             logger.info('SLURM vars not set (distributed training not available)')
-            world_size, rank = 1, 0
-            return world_size, rank
+            return 1, 0
+
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = str(port if port is not None else _find_free_port())
+    os.environ['NCCL_SOCKET_IFNAME'] = 'lo'
+    os.environ['NCCL_NET_GIB_EXTRA_IFS'] = 'lo'
 
     try:
-        os.environ['MASTER_PORT'] = str(port)
         torch.distributed.init_process_group(
             backend='nccl',
             world_size=world_size,
             rank=rank)
     except Exception as e:
-        world_size, rank = 1, 0
-        logger.info(f'distributed training not available {e}')
+        logger.warning(f'NCCL init failed ({e}); falling back to single-process')
+        return 1, 0
 
     return world_size, rank
 
