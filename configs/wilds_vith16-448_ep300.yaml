@@ -1,5 +1,5 @@
 data:
-  batch_size: 256
+  batch_size: 512
   color_jitter_strength: 0.0
   crop_scale:
     - 1.0
@@ -32,7 +32,7 @@ mask:
     - 0.2
 meta:
   copy_data: false
-  load_checkpoint: true
+  load_checkpoint: false
   model_name: vit_huge
   pred_depth: 12
   pred_emb_dim: 384
