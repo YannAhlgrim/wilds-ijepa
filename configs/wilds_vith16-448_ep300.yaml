@@ -32,7 +32,7 @@ mask:
     - 0.2
 meta:
   copy_data: false
-  load_checkpoint: false
+  load_checkpoint: true
   model_name: vit_huge
   pred_depth: 12
   pred_emb_dim: 384
@@ -40,7 +40,7 @@ meta:
   use_bfloat16: true
   use_gradient_checkpointing: true
 optimization:
-  gradient_accumulation_steps: 32
+  gradient_accumulation_steps: 21
   ema:
     - 0.996
     - 1.0
