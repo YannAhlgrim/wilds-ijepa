@@ -10,7 +10,7 @@ meta:
   head_type: linear
 
 data:
-  batch_size: 256
+  batch_size: 1024
   root_path: ./wilds_data
   num_workers: 10
   pin_mem: true
