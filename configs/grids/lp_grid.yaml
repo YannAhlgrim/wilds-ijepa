@@ -18,4 +18,4 @@ launch:
   partition: gpu1
   nodes: 1
   tasks_per_node: 1
-  time: 600
+  time: 480
