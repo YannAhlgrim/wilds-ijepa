@@ -15,7 +15,7 @@ grid:
 
 launch:
   folder: submitit_logs/
-  partition: gpu1
+  partition: gpu8
   nodes: 1
   tasks_per_node: 1
-  time: 480
+  time: 180
