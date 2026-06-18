@@ -213,6 +213,7 @@ def main(args, resume_preempt=False):
     l_args = args["logging"]
     v_args = args["validation"]
     es_args = o_args["early_stopping"]
+    accum_steps = o_args.get("gradient_accumulation_steps", 1)
 
     folder = resolve_log_dir(args, stage="train")
     tag = l_args["write_tag"]
@@ -431,6 +432,7 @@ def main(args, resume_preempt=False):
 
         loss_meter = AverageMeter()
 
+        optimizer.zero_grad()
         for itr, (imgs, labels) in enumerate(train_loader):
             imgs = imgs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
@@ -441,9 +443,11 @@ def main(args, resume_preempt=False):
                 outputs = model(imgs)
                 loss = criterion(outputs, labels)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            (loss / accum_steps).backward()
+
+            if (itr + 1) % accum_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
 
             loss_meter.update(loss.item(), n=labels.size(0))
 
