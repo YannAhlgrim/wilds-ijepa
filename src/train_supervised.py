@@ -214,6 +214,7 @@ def main(args, resume_preempt=False):
     v_args = args["validation"]
     es_args = o_args["early_stopping"]
     accum_steps = o_args.get("gradient_accumulation_steps", 1)
+    use_gradient_checkpointing = m_args.get("use_gradient_checkpointing", True)
 
     folder = resolve_log_dir(args, stage="train")
     tag = l_args["write_tag"]
@@ -245,6 +246,7 @@ def main(args, resume_preempt=False):
         patch_size=mk_args["patch_size"],
         crop_size=d_args["crop_size"],
         model_name=m_args["model_name"],
+        use_gradient_checkpointing=use_gradient_checkpointing,
     )
 
     representation_type = m_args.get("representation_type", "last_avgpool")
