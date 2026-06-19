@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 
 
 def _find_metric(metrics, key):
@@ -19,7 +20,131 @@ def _find_metric(metrics, key):
     return None
 
 
-def _collect_metrics(root_dir, key):
+def _parse_yaml_value(value):
+    value = value.strip()
+    if value == "null" or value == "~":
+        return None
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        return value[1:-1]
+    return value
+
+
+def _load_params_simple(dirpath):
+    path = os.path.join(dirpath, "params.yaml")
+    alt_path = os.path.join(dirpath, "params-eval.yaml")
+    for p in [path, alt_path]:
+        if os.path.isfile(p):
+            try:
+                with open(p, "r") as f:
+                    return _parse_simple_yaml(f.read())
+            except (OSError, ValueError):
+                continue
+    return None
+
+
+def _parse_simple_yaml(text):
+    stack = [{}]
+    indent_stack = [-1]
+
+    for raw_line in text.split("\n"):
+        line = raw_line.rstrip()
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+
+        stripped = line.lstrip(" ")
+        indent = len(line) - len(stripped)
+
+        while indent <= indent_stack[-1]:
+            stack.pop()
+            indent_stack.pop()
+
+        if stripped.endswith(":") and not stripped.startswith("- "):
+            key = stripped[:-1].strip()
+            new_dict = {}
+            stack[-1][key] = new_dict
+            stack.append(new_dict)
+            indent_stack.append(indent)
+        elif ": " in stripped:
+            key, _, value = stripped.partition(": ")
+            key = key.strip()
+            value = _parse_yaml_value(value)
+            stack[-1][key] = value
+        elif stripped.startswith("- "):
+            item = _parse_yaml_value(stripped[2:])
+            if not isinstance(stack[-1], list):
+                parent = stack[-2] if len(stack) >= 2 else stack[-1]
+                for k, v in list(parent.items()):
+                    if v is stack[-1]:
+                        parent[k] = []
+                        stack[-1] = parent[k]
+                        break
+            stack[-1].append(item)
+        else:
+            continue
+
+        if stripped.endswith(":") and not stripped.startswith("- "):
+            pass
+        elif ":" not in stripped or indent_stack[-1] != indent:
+            pass
+
+    return stack[0]
+
+
+def _get_in_params(params, path):
+    if params is None:
+        return None
+    keys = path.split(".")
+    current = params
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return None
+    return current
+
+
+_MODEL_PREFIXES = {
+    "vith": "vit_huge",
+    "vitb": "vit_base",
+    "vitl": "vit_large",
+    "vitt": "vit_tiny",
+    "vits": "vit_small",
+    "vitg": "vit_giant",
+}
+
+
+def _infer_model_from_run_name(run_name):
+    for prefix, model in _MODEL_PREFIXES.items():
+        if run_name.lower().startswith(prefix):
+            return model
+    return None
+
+
+def _get_model_name(dirpath, run_name=None):
+    params = _load_params_simple(dirpath)
+    name = None
+    if params is not None:
+        name = _get_in_params(params, "meta.model_name")
+    if name is None and run_name:
+        name = _infer_model_from_run_name(run_name)
+    return name or "unknown"
+
+
+def _collect_rows(root_dir, metric_key, col_paths):
     rows = []
     for dirpath, _, filenames in os.walk(root_dir):
         for fname in filenames:
@@ -31,44 +156,198 @@ def _collect_metrics(root_dir, key):
                     metrics = json.load(f)
             except (OSError, json.JSONDecodeError):
                 continue
-            value = _find_metric(metrics, key)
+            value = _find_metric(metrics, metric_key)
             if value is None:
                 continue
             run_name = os.path.basename(os.path.dirname(path))
-            rows.append((float(value), run_name, path))
+            model_name = _get_model_name(dirpath, run_name)
+            params = _load_params_simple(dirpath)
+            col_values = [
+                _get_in_params(params, cp) for cp in col_paths
+            ]
+            rows.append(
+                (float(value), model_name, col_values, run_name, path)
+            )
     return rows
 
 
+def _format_value(val, width=None):
+    if val is None:
+        s = "\u2014"
+    elif isinstance(val, bool):
+        s = str(val)
+    elif isinstance(val, int):
+        s = str(val)
+    elif isinstance(val, float):
+        if abs(val) < 0.001 or abs(val) >= 10000:
+            s = f"{val:.2e}"
+        elif val == int(val):
+            s = f"{val:.1f}"
+        else:
+            s = f"{val:.6f}".rstrip("0").rstrip(".")
+    elif isinstance(val, list):
+        s = str(val)
+    else:
+        s = str(val)
+    if width is not None and len(s) > width:
+        s = s[: width - 1] + "\u2026"
+    return s
+
+
+def _col_width(header, values):
+    w = len(header)
+    for val in values:
+        s = _format_value(val)
+        w = max(w, len(s))
+    return w
+
+
+_BLOCK = "\u2588"
+_LIGHT_H = "\u2500"
+_LIGHT_V = "\u2502"
+_LIGHT_D = "\u253c"
+_HEAVY_H = "\u2501"
+_HEAVY_V = "\u2503"
+_HEAVY_D = "\u254b"
+
+
+def _print_separator(widths, heavy=False):
+    h = _HEAVY_H if heavy else _LIGHT_H
+    d = _HEAVY_D if heavy else _LIGHT_D
+    parts = []
+    for i, w in enumerate(widths):
+        if i > 0:
+            parts.append(d)
+        segments = max(w, 1) - 1
+        if segments <= 0:
+            parts.append(h)
+        else:
+            parts.append(h * segments)
+    line = h.join(parts) if len(parts) > 0 else ""
+    print(f"  {line}")
+
+
+def _print_row(values, widths, align_right=None):
+    if align_right is None:
+        align_right = [True] * len(values)
+    parts = []
+    for i, (val, w) in enumerate(zip(values, widths)):
+        s = _format_value(val, w)
+        if align_right[i]:
+            s = s.rjust(w)
+        else:
+            s = s.ljust(w)
+        if i > 0:
+            parts.append(f" {_LIGHT_V} ")
+        parts.append(s)
+    print("  " + "".join(parts))
+
+
+def _print_header(full_cols, widths):
+    align = [False] + [True] * (len(full_cols) - 2) + [False]
+    _print_row(full_cols, widths, align)
+    _print_separator(widths)
+
+
+def _print_results(model_type, rows, metric_key, col_headers, top):
+    if not rows:
+        return
+
+    display_rows = rows[:top]
+
+    n = len(display_rows)
+    rank_width = max(3, len(str(n)))
+    metric_header = metric_key
+    metric_vals = [r[0] for r in display_rows]
+    metric_width = max(
+        len(metric_header), max(len(_format_value(v)) for v in metric_vals)
+    )
+
+    col_widths = []
+    for i, ch in enumerate(col_headers):
+        col_vals = [r[2][i] for r in display_rows]
+        cw = _col_width(ch, col_vals)
+        col_widths.append(cw)
+
+    run_name_vals = [r[3] for r in display_rows]
+    run_name_width = max(
+        len("run_name"), max(len(v) for v in run_name_vals)
+    )
+
+    widths = [rank_width, metric_width] + col_widths + [run_name_width]
+
+    full_cols = (
+        ["#", metric_header] + col_headers + ["run_name"]
+    )
+
+    title = f"{model_type} \u2014 Top {top} by {metric_key}"
+    sep_len = sum(w + 3 for w in widths) + 2
+    print(_HEAVY_H * sep_len)
+    print(f"  {title}")
+    print(_HEAVY_H * sep_len)
+    _print_header(full_cols, widths)
+
+    for idx, row in enumerate(display_rows, start=1):
+        metric_str = _format_value(row[0])
+        col_strs = [_format_value(row[2][i]) for i in range(len(col_headers))]
+        vals = [str(idx), metric_str] + col_strs + [row[3]]
+        align = [False] + [True] * (len(full_cols) - 2) + [False]
+        _print_row(vals, widths, align)
+
+    print()
+
+
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="""Summarize grid evaluation results grouped by model type.
+
+Examples:
+  %(prog)s --top 10
+  %(prog)s --metric macro_f1 --cols data.batch_size optimization.lr --top 5
+""",
+    )
     parser.add_argument(
         "--root",
         default="experiment_logs/eval-wilds",
-        help="root folder for eval logs",
+        help="root folder for eval logs (default: %(default)s)",
     )
     parser.add_argument(
         "--metric",
         default="macro_f1",
-        help="metric key to rank by",
+        help="metric key to rank by (default: %(default)s)",
     )
     parser.add_argument(
         "--top",
         type=int,
-        default=20,
-        help="number of runs to display",
+        default=10,
+        help="top N results per model type (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--cols",
+        nargs="*",
+        default=[],
+        help="extra columns from params.yaml, e.g. data.batch_size optimization.lr",
     )
     args = parser.parse_args()
 
-    rows = _collect_metrics(args.root, args.metric)
-    rows.sort(key=lambda r: r[0], reverse=True)
+    rows = _collect_rows(args.root, args.metric, args.cols)
 
     if not rows:
         print("No metrics found.")
         return
 
-    print(f"Ranking by '{args.metric}' (top {min(args.top, len(rows))})")
-    for idx, (value, run_name, path) in enumerate(rows[: args.top], start=1):
-        print(f"{idx:>3} | {value:.6f} | {run_name} | {path}")
+    col_headers = [c.split(".")[-1] for c in args.cols]
+
+    groups = {}
+    for row in rows:
+        model = row[1]
+        groups.setdefault(model, []).append(row)
+
+    for model_type in sorted(groups.keys()):
+        group = groups[model_type]
+        group.sort(key=lambda r: r[0], reverse=True)
+        _print_results(model_type, group, args.metric, col_headers, args.top)
 
 
 if __name__ == "__main__":
