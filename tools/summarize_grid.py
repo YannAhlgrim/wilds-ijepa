@@ -63,6 +63,46 @@ def _load_params_simple(dirpath):
 def _parse_simple_yaml(text):
     lines = text.split("\n")
 
+    def _effective(raw, indent):
+        stripped = raw.lstrip(" ")
+        cur_indent = len(raw) - len(stripped)
+        if cur_indent != indent:
+            return None, cur_indent
+        if " #" in stripped:
+            effective = stripped[: stripped.index(" #")].rstrip()
+        else:
+            effective = stripped
+        return effective, cur_indent
+
+    def _peek_nonblank(idx):
+        while idx < len(lines):
+            raw = lines[idx].rstrip()
+            if raw.strip() and not raw.strip().startswith("#"):
+                return idx
+            idx += 1
+        return len(lines)
+
+    def _collect_list_items(start, indent):
+        items = []
+        i = start
+        while i < len(lines):
+            raw = lines[i].rstrip()
+            if not raw.strip() or raw.strip().startswith("#"):
+                i += 1
+                continue
+            effective, cur_indent = _effective(raw, indent)
+            if effective is None:
+                if cur_indent < indent:
+                    break
+                i += 1
+                continue
+            if effective.startswith("- "):
+                items.append(_parse_yaml_value(effective[2:]))
+                i += 1
+            else:
+                break
+        return items, i
+
     def _parse_block(start, indent):
         result = {}
         list_items = []
@@ -99,8 +139,23 @@ def _parse_simple_yaml(text):
                 i += 1
             elif effective.endswith(":"):
                 key = effective[:-1].strip()
-                sub_val, i = _parse_block(i + 1, indent + 2)
-                result[key] = sub_val
+                nxt = _peek_nonblank(i + 1)
+                if nxt < len(lines):
+                    nxt_raw = lines[nxt].rstrip()
+                    nxt_stripped = nxt_raw.lstrip(" ")
+                    nxt_indent = len(nxt_raw) - len(nxt_stripped)
+                else:
+                    nxt_indent = -1
+
+                if nxt_indent > indent:
+                    sub_val, i = _parse_block(i + 1, nxt_indent)
+                    result[key] = sub_val
+                elif nxt_indent == indent and nxt_stripped.startswith("- "):
+                    lst, i = _collect_list_items(i + 1, indent)
+                    result[key] = lst
+                else:
+                    result[key] = None
+                    i += 1
             elif ": " in effective:
                 key, _, val_str = effective.partition(": ")
                 result[key.strip()] = _parse_yaml_value(val_str)
@@ -260,7 +315,7 @@ def _print_header(full_cols, widths):
     _print_separator(widths)
 
 
-def _print_results(model_type, rows, metric_key, col_headers, top):
+def _print_results(model_type, rows, metric_key, col_headers, top, show_run_name):
     if not rows:
         return
 
@@ -268,10 +323,9 @@ def _print_results(model_type, rows, metric_key, col_headers, top):
 
     n = len(display_rows)
     rank_width = max(3, len(str(n)))
-    metric_header = metric_key
     metric_vals = [r[0] for r in display_rows]
     metric_width = max(
-        len(metric_header), max(len(_format_value(v)) for v in metric_vals)
+        len(metric_key), max(len(_format_value(v)) for v in metric_vals)
     )
 
     col_widths = []
@@ -280,16 +334,14 @@ def _print_results(model_type, rows, metric_key, col_headers, top):
         cw = _col_width(ch, col_vals)
         col_widths.append(cw)
 
-    run_name_vals = [r[3] for r in display_rows]
-    run_name_width = max(
-        len("run_name"), max(len(v) for v in run_name_vals)
-    )
+    widths = [rank_width, metric_width] + col_widths
+    full_cols = ["#", metric_key] + col_headers
 
-    widths = [rank_width, metric_width] + col_widths + [run_name_width]
-
-    full_cols = (
-        ["#", metric_header] + col_headers + ["run_name"]
-    )
+    if show_run_name:
+        run_name_vals = [r[3] for r in display_rows]
+        run_name_width = max(len("run_name"), max(len(v) for v in run_name_vals))
+        widths.append(run_name_width)
+        full_cols.append("run_name")
 
     title = f"{model_type} \u2014 Top {top} by {metric_key}"
     sep_len = sum(w + 3 for w in widths) + 2
@@ -301,7 +353,9 @@ def _print_results(model_type, rows, metric_key, col_headers, top):
     for idx, row in enumerate(display_rows, start=1):
         metric_str = _format_value(row[0])
         col_strs = [_format_value(row[2][i]) for i in range(len(col_headers))]
-        vals = [str(idx), metric_str] + col_strs + [row[3]]
+        vals = [str(idx), metric_str] + col_strs
+        if show_run_name:
+            vals.append(row[3])
         align = [False] + [True] * (len(full_cols) - 2) + [False]
         _print_row(vals, widths, align)
 
@@ -340,6 +394,12 @@ Examples:
         default=[],
         help="extra columns from params.yaml, e.g. data.batch_size optimization.lr",
     )
+    parser.add_argument(
+        "--no-run-name",
+        action="store_false",
+        dest="show_run_name",
+        help="hide the run_name column",
+    )
     args = parser.parse_args()
 
     rows = _collect_rows(args.root, args.metric, args.cols)
@@ -358,7 +418,7 @@ Examples:
     for model_type in sorted(groups.keys()):
         group = groups[model_type]
         group.sort(key=lambda r: r[0], reverse=True)
-        _print_results(model_type, group, args.metric, col_headers, args.top)
+        _print_results(model_type, group, args.metric, col_headers, args.top, args.show_run_name)
 
 
 if __name__ == "__main__":
