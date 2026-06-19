@@ -110,8 +110,6 @@ def main(args):
     params_path = os.path.join(folder, "params-eval.yaml")
     with open(params_path, "w") as f:
         yaml.dump(args, f)
-    with open(os.path.join(folder, "params.yaml"), "w") as f:
-        yaml.dump(args, f)
 
     model_name = meta_args["model_name"]
     embed_dim = meta_args["embed_dim"]

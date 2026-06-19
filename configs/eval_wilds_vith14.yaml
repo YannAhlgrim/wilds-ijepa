@@ -19,6 +19,18 @@ data:
   split: test
   download: true
 
+optimization:
+  lr: 0.01
+  weight_decay: 5.0e-4
+  optimizer: adamw
+  epochs: 300
+  freeze_weights: true
+  lr_schedule: cosine
+  warmup: 0
+  momentum: 0.99
+  start_lr: 0.0
+  final_lr: 0.0
+
 logging:
   write_tag: iwildcam_test
   auto_folder: true
