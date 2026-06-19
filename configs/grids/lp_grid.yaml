@@ -1,4 +1,4 @@
-base_config: configs/supervised_wilds_vitb16-448_ep600-lp.yaml
+base_config: configs/supervised_wilds_vith16-448_ep300-lp.yaml
 
 constants:
   logging.write_tag: linear_probe

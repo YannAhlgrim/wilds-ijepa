@@ -49,6 +49,7 @@ def build_run_name(args):
     val_args = args.get("validation", {})
 
     model_name = meta_args.get("model_name", "model")
+    tag = meta_args.get("tag")
     representation_type = meta_args.get("representation_type")
     head_type = meta_args.get("head_type")
     patch_size = mask_args.get("patch_size", meta_args.get("patch_size"))
@@ -68,6 +69,8 @@ def build_run_name(args):
 
     add("p", patch_size)
     add("c", crop_size)
+    if tag:
+        parts.append(str(tag))
     add("bs", batch_size)
     add("rep", representation_type)
     add("head", head_type)

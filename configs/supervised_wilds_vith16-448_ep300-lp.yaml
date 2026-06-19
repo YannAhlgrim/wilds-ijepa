@@ -1,5 +1,6 @@
 meta:
   model_name: vit_huge
+  tag: in1k
   embed_dim: 1280
   load_checkpoint: true
   checkpoint_folder: experiment_logs/imagenet-vith16.448/
@@ -56,6 +57,5 @@ validation:
   eval_every: 1
 
 logging:
-  run_name: in1k-vith16-448
   write_tag: linear_probe
   auto_folder: true
