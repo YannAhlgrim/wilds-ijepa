@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import re
 
 
 def _find_metric(metrics, key):
@@ -22,12 +21,17 @@ def _find_metric(metrics, key):
 
 def _parse_yaml_value(value):
     value = value.strip()
-    if value == "null" or value == "~":
+    if not value or value in ("null", "~"):
         return None
     if value == "true":
         return True
     if value == "false":
         return False
+    if value.startswith("[") and value.endswith("]"):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            pass
     try:
         return int(value)
     except ValueError:
@@ -57,51 +61,58 @@ def _load_params_simple(dirpath):
 
 
 def _parse_simple_yaml(text):
-    stack = [{}]
-    indent_stack = [-1]
+    lines = text.split("\n")
 
-    for raw_line in text.split("\n"):
-        line = raw_line.rstrip()
-        if not line.strip() or line.strip().startswith("#"):
-            continue
+    def _parse_block(start, indent):
+        result = {}
+        list_items = []
+        is_list = False
+        i = start
 
-        stripped = line.lstrip(" ")
-        indent = len(line) - len(stripped)
+        while i < len(lines):
+            raw = lines[i].rstrip()
+            if not raw.strip() or raw.strip().startswith("#"):
+                i += 1
+                continue
 
-        while indent <= indent_stack[-1]:
-            stack.pop()
-            indent_stack.pop()
+            stripped = raw.lstrip(" ")
+            cur_indent = len(raw) - len(stripped)
 
-        if stripped.endswith(":") and not stripped.startswith("- "):
-            key = stripped[:-1].strip()
-            new_dict = {}
-            stack[-1][key] = new_dict
-            stack.append(new_dict)
-            indent_stack.append(indent)
-        elif ": " in stripped:
-            key, _, value = stripped.partition(": ")
-            key = key.strip()
-            value = _parse_yaml_value(value)
-            stack[-1][key] = value
-        elif stripped.startswith("- "):
-            item = _parse_yaml_value(stripped[2:])
-            if not isinstance(stack[-1], list):
-                parent = stack[-2] if len(stack) >= 2 else stack[-1]
-                for k, v in list(parent.items()):
-                    if v is stack[-1]:
-                        parent[k] = []
-                        stack[-1] = parent[k]
-                        break
-            stack[-1].append(item)
-        else:
-            continue
+            if cur_indent < indent:
+                break
+            if cur_indent > indent:
+                i += 1
+                continue
 
-        if stripped.endswith(":") and not stripped.startswith("- "):
-            pass
-        elif ":" not in stripped or indent_stack[-1] != indent:
-            pass
+            if " #" in stripped:
+                effective = stripped[: stripped.index(" #")].rstrip()
+            else:
+                effective = stripped
 
-    return stack[0]
+            if not effective:
+                i += 1
+                continue
+
+            if effective.startswith("- "):
+                is_list = True
+                list_items.append(_parse_yaml_value(effective[2:]))
+                i += 1
+            elif effective.endswith(":"):
+                key = effective[:-1].strip()
+                sub_val, i = _parse_block(i + 1, indent + 2)
+                result[key] = sub_val
+            elif ": " in effective:
+                key, _, val_str = effective.partition(": ")
+                result[key.strip()] = _parse_yaml_value(val_str)
+                i += 1
+            else:
+                i += 1
+
+        if is_list:
+            return list_items, i
+        return result, i
+
+    return _parse_block(0, 0)[0]
 
 
 def _get_in_params(params, path):
