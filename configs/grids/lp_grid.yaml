@@ -10,13 +10,13 @@ grid:
   optimization.momentum: [0.9]
   optimization.lr_schedule: [cosine]
   optimization.gradient_accumulation_steps: [8, 16]
-  data.batch_size: [64]
+  data.batch_size: [16]
   meta.representation_type: [last_avgpool, last4_avgpool_concat]
   meta.head_type: [linear, bn_linear]
 
 launch:
   folder: submitit_logs/
-  partition: gpu8
+  partition: gpu1
   nodes: 1
   tasks_per_node: 1
   time: 180
