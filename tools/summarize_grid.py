@@ -403,7 +403,7 @@ def _print_results(model_type, rows, metric_key, col_headers, top, show_run_name
 def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="""Summarize grid evaluation results grouped by model type.
+        description="""Summarize grid evaluation results grouped by model / patch size / resolution combination.
 
 Examples:
   %(prog)s --top 10
@@ -438,12 +438,6 @@ Examples:
         dest="show_run_name",
         help="hide the run_name column",
     )
-    parser.add_argument(
-        "--group-by",
-        default="model",
-        choices=["model", "patch_size", "crop_size"],
-        help="group results by this attribute (default: %(default)s)",
-    )
     args = parser.parse_args()
 
     rows = _collect_rows(args.root, args.metric, args.cols)
@@ -454,15 +448,12 @@ Examples:
 
     col_headers = [c.split(".")[-1] for c in args.cols]
 
-    group_key = {
-        "model": lambda r: r[1],
-        "patch_size": lambda r: str(r[2]),
-        "crop_size": lambda r: str(r[3]),
-    }[args.group_by]
-
     groups = {}
     for row in rows:
-        key = group_key(row)
+        model = row[1]
+        patch = row[2]
+        crop = row[3]
+        key = f"{model}  patch={patch}  resolution={crop}"
         groups.setdefault(key, []).append(row)
 
     for group_name in sorted(groups.keys()):
