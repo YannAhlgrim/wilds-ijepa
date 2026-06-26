@@ -1,4 +1,4 @@
-base_config: configs/supervised_wilds_vith16-448_ep300-lp.yaml
+base_config: configs/supervised_wilds_vith14_ep300-lp.yaml
 
 constants:
   logging.write_tag: linear_probe
@@ -9,7 +9,7 @@ grid:
   optimization.weight_decay: [5.0e-4, 0]
   optimization.momentum: [0.9]
   optimization.lr_schedule: [cosine]
-  optimization.gradient_accumulation_steps: [8, 16]
+  optimization.gradient_accumulation_steps: [8, 16, 32, 64]
   data.batch_size: [16]
   meta.representation_type: [last_avgpool, last4_avgpool_concat]
   meta.head_type: [linear, bn_linear]
