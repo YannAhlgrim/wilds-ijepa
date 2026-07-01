@@ -1,10 +1,9 @@
 meta:
   model_name: vit_huge
-  tag: in1k
   embed_dim: 1280
   load_checkpoint: true
-  checkpoint_folder: experiment_logs/imagenet-vith16.448/
-  read_checkpoint: IN1K-vit.h.16-448px-300e.pth.tar
+  checkpoint_folder: experiment_logs/vith16-bs.2048-448/
+  read_checkpoint: jepa-ep50.pth.tar
   use_bfloat16: true
   num_classes: 182
   representation_type: last_avgpool
