@@ -13,7 +13,7 @@ Reference: official I-JEPA README https://github.com/facebookresearch/ijepa/blob
 ## Models
 
 - ViT-H, 14x14 patches, 224x224 resolution (trained)
-- ViT-H, 16x16 patches, 448x448 resolution (planned)
+- ViT-H, 16x16 patches, 448x448 resolution (trained)
 - Plan: add a graph comparing models with the WILDS leaderboard https://wilds.stanford.edu/leaderboard/#with-unlabeled-data-1
 
 <!-- Optional: add a WILDS leaderboard comparison graph here -->
@@ -25,7 +25,7 @@ Reference: official I-JEPA README https://github.com/facebookresearch/ijepa/blob
 - `src/train_supervised.py`: supervised training loop
 - `configs/`: training configs
 - `configs/wilds_vith14_ep300.yaml`: SSL config used here
-- `configs/supervised_wilds_vith14_ep300.yaml`: supervised config used here
+- `configs/supervised_vith14_224.yaml`: supervised config used here (see `configs/` for all supervised linear-probe configs)
 - `main_distributed.py`: entrypoint for distributed SSL training
 - `main_distributed_supervised.py`: entrypoint for distributed supervised training
 - `requirements.txt`: dependencies
@@ -50,7 +50,7 @@ python3 main_distributed.py --fname configs/wilds_vith14_ep300.yaml --folder $su
 Supervised fine-tuning:
 
 ```
-python3 main_distributed_supervised.py --fname configs/supervised_wilds_vith14_ep300.yaml --folder $submitit_folder --partition $slurm_partition --nodes $nodes --tasks-per-node $tasks_per_node --time $time
+python3 main_distributed_supervised.py --fname configs/supervised_vith14_224.yaml --folder $submitit_folder --partition $slurm_partition --nodes $nodes --tasks-per-node $tasks_per_node --time $time
 ```
 
 Evaluation on iWildCam test split:

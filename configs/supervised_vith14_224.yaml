@@ -1,22 +1,20 @@
 meta:
   model_name: vit_huge
-  tag: in22k
   embed_dim: 1280
   load_checkpoint: true
-  checkpoint_folder: experiment_logs/imagenet-vith16.448/
-  read_checkpoint: IN22K-vit.h.14-900e.pth.tar
+  checkpoint_folder: experiment_logs/vith14.224-bs.128-ep.300/
+  read_checkpoint: jepa-ep300.pth.tar
   use_bfloat16: true
   num_classes: 182
-  representation_type: last_avgpool
-  head_type: linear
+  representation_type: last4_avgpool_concat
+  head_type: bn_linear
 
 data:
-  batch_size: 256
+  batch_size: 16
   root_path: ./wilds_data
   num_workers: 10
   pin_mem: true
   crop_size: 224
-  crop_scale: [1.0, 1.0]
   use_random_resized_crop: false
   use_horizontal_flip: false
   use_color_distortion: false
@@ -27,25 +25,14 @@ mask:
   patch_size: 14
 
 optimization:
-  optimizer: adamw # 'adamw', 'sgd', or 'lars'
-  freeze_weights: true # true for linear probing, false for full fine-tuning
+  optimizer: adamw
+  freeze_weights: true
   epochs: 300
-  lr: 0.01
+  lr: 0.001
   weight_decay: 5.0e-4
   lr_schedule: cosine
-  step_milestones: [15, 30, 45]
-  step_gamma: 0.1
-  start_lr: 0.0
+  gradient_accumulation_steps: 32
   final_lr: 0.0
-  warmup: 0
-  momentum: 0.99
-  lars_eta: 0.001
-  lars_eps: 1.0e-8
-  lars_exclude_bias_and_norm: true
-  ipe_scale: 1.0
-  # Sweep suggestions (manual edits):
-  # - lr: 0.01 | 0.05 | 0.001
-  # - weight_decay: 5.0e-4 | 0.0
   early_stopping:
     enabled: true
     patience: 10
