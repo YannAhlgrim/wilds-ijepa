@@ -356,7 +356,6 @@ def main(args, resume_preempt=False):
 
     train_transform = make_transforms(
         crop_size=d_args["crop_size"],
-        crop_scale=tuple(d_args["crop_scale"]),
         horizontal_flip=d_args["use_horizontal_flip"],
         color_distortion=d_args["use_color_distortion"],
         color_jitter=d_args["color_jitter_strength"],
