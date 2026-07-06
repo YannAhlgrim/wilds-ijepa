@@ -88,6 +88,7 @@ def build_run_name(args):
     add("ipe", opt_args.get("ipe_scale"))
     add("cs", data_args.get("crop_scale"))
     add("eval", val_args.get("eval_every"))
+    add("seed", meta_args.get("seed"))
 
     return "-".join([p for p in parts if p])
 

@@ -28,6 +28,9 @@ Reference: official I-JEPA README https://github.com/facebookresearch/ijepa/blob
 - `configs/supervised_vith14_224.yaml`: supervised config used here (see `configs/` for all supervised linear-probe configs)
 - `main_distributed.py`: entrypoint for distributed SSL training
 - `main_distributed_supervised.py`: entrypoint for distributed supervised training
+- `configs/grids/seeds/`: per-model seed grids for multi-seed paper runs
+- `tools/run_seed_sweep.sh`: launch each model across all seeds (one by one)
+- `tools/aggregate_seeds.py`: aggregate seed runs into mean +/- std (ID + OOD)
 - `requirements.txt`: dependencies
 
 <!-- Optional: add a sample iWildCam image grid here -->
@@ -62,6 +65,50 @@ python3 main_eval_wilds.py --fname configs/eval_wilds_vith14.yaml --folder $subm
 Evaluation metrics are written to `experiment_logs/eval-wilds-vith14/iwildcam_test_metrics.json` by default.
 
 Variable hints: set `$submitit_folder`, `$slurm_partition`, `$nodes`, `$tasks_per_node`, and `$time` to match your SLURM cluster.
+
+## Multi-seed runs (paper results)
+
+To report mean +/- std over seeds, each supervised model is trained across 5
+seeds (0-4). Seeding is config-driven via `meta.seed` (applied in
+`src/train_supervised.py`), and the run folder name includes `-seed{N}` so seeds
+do not collide.
+
+Each run automatically:
+- evaluates on **both** WILDS splits: `id_test` (ID) and `test` (OOD), so the
+  generalization gap can be measured;
+- records the WILDS metrics, the wall-clock **training time**, and the number of
+  **epochs run** (accounting for early stopping) into the per-split metrics JSON
+  and into `params.yaml` in the eval folder.
+
+The four leaderboard columns are: Test ID Macro F1, Test ID Avg Acc,
+Test OOD Macro F1, Test OOD Avg Acc (headline metric: `F1-macro_all`).
+
+Launch all models, one at a time, each across all seeds (SLURM/submitit):
+
+```
+bash tools/run_seed_sweep.sh --partition $slurm_partition --time $time
+```
+
+Run a subset of models:
+
+```
+bash tools/run_seed_sweep.sh --partition $slurm_partition --models "vith14_224 vith16_448"
+```
+
+Per-model seed grids live in `configs/grids/seeds/` (each sets
+`meta.seed: [0, 1, 2, 3, 4]` over the corresponding `configs/supervised_*.yaml`
+base config). They are launched via `tools/run_grid.py`.
+
+Aggregate mean +/- std across seeds after the jobs finish:
+
+```
+python3 tools/aggregate_seeds.py --root experiment_logs/eval-wilds
+```
+
+Outputs:
+- `experiment_logs/seed-runs/<model>/summary.json` (per-seed rows + mean/std for
+  all metrics, training time, epochs, and ID-OOD generalization gap)
+- `experiment_logs/seed-runs/summary_all.csv` (one row per model, paper-ready)
 
 ## License
 
