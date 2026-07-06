@@ -1,5 +1,6 @@
 import os
 import random
+import resource
 import shutil
 import sys
 import json
@@ -51,6 +52,33 @@ def _format_hms(seconds):
     h, rem = divmod(seconds, 3600)
     m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _peak_host_ram_gb():
+    """Peak resident set size (RSS) of this process, in GB.
+
+    Uses resource.getrusage(RUSAGE_SELF).ru_maxrss, which on Linux is reported
+    in kilobytes. This is the process high-water mark; with tasks_per_node=1 it
+    reflects the whole training worker. Compare against the SLURM mem request
+    (e.g. 180G) to right-size future jobs.
+    """
+    try:
+        maxrss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return float(maxrss_kb) / (1024.0 * 1024.0)
+    except (ValueError, OSError):
+        return None
+
+
+def _peak_gpu_mem_gb(device):
+    """Peak allocated and reserved GPU memory (GB) since the last reset."""
+    if not torch.cuda.is_available():
+        return None, None
+    try:
+        alloc = torch.cuda.max_memory_allocated(device) / 1e9
+        reserved = torch.cuda.max_memory_reserved(device) / 1e9
+        return float(alloc), float(reserved)
+    except (RuntimeError, ValueError):
+        return None, None
 
 
 def strip_module_prefix(state_dict):
@@ -446,6 +474,9 @@ def main(args, resume_preempt=False):
             if is_best:
                 torch.save(save_dict, best_path)
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats(device)
+
     train_start_time = time.perf_counter()
     epochs_run = 0
     early_stopped = False
@@ -535,12 +566,17 @@ def main(args, resume_preempt=False):
             break
 
     train_time_seconds = time.perf_counter() - train_start_time
+    peak_host_ram_gb = _peak_host_ram_gb()
+    peak_gpu_alloc_gb, peak_gpu_reserved_gb = _peak_gpu_mem_gb(device)
     if rank == 0:
         logger.info(
             f"Training finished: epochs_run={epochs_run} "
             f"early_stopped={early_stopped} "
             f"train_time={_format_hms(train_time_seconds)} "
-            f"({train_time_seconds:.1f}s)"
+            f"({train_time_seconds:.1f}s) "
+            f"peak_host_ram_gb={peak_host_ram_gb} "
+            f"peak_gpu_alloc_gb={peak_gpu_alloc_gb} "
+            f"peak_gpu_reserved_gb={peak_gpu_reserved_gb}"
         )
 
     if early_stopper.enabled and early_stopper.restore_best_weights:
@@ -615,6 +651,9 @@ def main(args, resume_preempt=False):
             "best_epoch": int(early_stopper.best_epoch),
             "early_stopped": bool(early_stopped),
             "best_val_loss": float(early_stopper.best_metric),
+            "peak_host_ram_gb": peak_host_ram_gb,
+            "peak_gpu_alloc_gb": peak_gpu_alloc_gb,
+            "peak_gpu_reserved_gb": peak_gpu_reserved_gb,
         }
 
         # Fold run_info into each split's metrics JSON so an aggregator can read
@@ -650,6 +689,9 @@ def main(args, resume_preempt=False):
                     "epochs_run": int(epochs_run),
                     "configured_epochs": int(o_args["epochs"]),
                     "early_stopped": bool(early_stopped),
+                    "peak_host_ram_gb": peak_host_ram_gb,
+                    "peak_gpu_alloc_gb": peak_gpu_alloc_gb,
+                    "peak_gpu_reserved_gb": peak_gpu_reserved_gb,
                     "eval_metrics_id_test": (
                         eval_results.get("id_test", {}).get("metrics")
                         if eval_results.get("id_test")

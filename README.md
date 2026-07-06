@@ -76,9 +76,17 @@ do not collide.
 Each run automatically:
 - evaluates on **both** WILDS splits: `id_test` (ID) and `test` (OOD), so the
   generalization gap can be measured;
-- records the WILDS metrics, the wall-clock **training time**, and the number of
-  **epochs run** (accounting for early stopping) into the per-split metrics JSON
-  and into `params.yaml` in the eval folder.
+- records the WILDS metrics, the wall-clock **training time**, the number of
+  **epochs run** (accounting for early stopping), and the **effective memory
+  usage** into the per-split metrics JSON and into `params.yaml` in the eval
+  folder.
+
+Effective memory is captured as a high-water mark during training:
+- `peak_host_ram_gb`: peak process RSS (`resource.getrusage`), to compare
+  against the SLURM `mem_per_gpu` request (e.g. 180G) and right-size future jobs.
+  With `tasks_per_node: 1` this reflects the whole training worker.
+- `peak_gpu_alloc_gb` / `peak_gpu_reserved_gb`: peak GPU VRAM
+  (`torch.cuda.max_memory_allocated` / `max_memory_reserved`).
 
 The four leaderboard columns are: Test ID Macro F1, Test ID Avg Acc,
 Test OOD Macro F1, Test OOD Avg Acc (headline metric: `F1-macro_all`).
@@ -107,8 +115,9 @@ python3 tools/aggregate_seeds.py --root experiment_logs/eval-wilds
 
 Outputs:
 - `experiment_logs/seed-runs/<model>/summary.json` (per-seed rows + mean/std for
-  all metrics, training time, epochs, and ID-OOD generalization gap)
-- `experiment_logs/seed-runs/summary_all.csv` (one row per model, paper-ready)
+  all metrics, training time, epochs, peak memory, and ID-OOD generalization gap)
+- `experiment_logs/seed-runs/summary_all.csv` (one row per model, paper-ready;
+  includes `peak_host_ram_gb_mean/std` and `peak_gpu_alloc_gb_mean/std`)
 
 ## License
 

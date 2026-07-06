@@ -192,6 +192,12 @@ def main():
         "train_time_seconds_std",
         "epochs_run_mean",
         "epochs_run_std",
+        "peak_host_ram_gb_mean",
+        "peak_host_ram_gb_std",
+        "peak_gpu_alloc_gb_mean",
+        "peak_gpu_alloc_gb_std",
+        "peak_gpu_reserved_gb_mean",
+        "peak_gpu_reserved_gb_std",
     ]
 
     for group_name in sorted(groups.keys()):
@@ -228,6 +234,9 @@ def main():
                     "configured_epochs": r["run_info"].get("configured_epochs"),
                     "best_epoch": r["run_info"].get("best_epoch"),
                     "early_stopped": r["run_info"].get("early_stopped"),
+                    "peak_host_ram_gb": r["run_info"].get("peak_host_ram_gb"),
+                    "peak_gpu_alloc_gb": r["run_info"].get("peak_gpu_alloc_gb"),
+                    "peak_gpu_reserved_gb": r["run_info"].get("peak_gpu_reserved_gb"),
                 }
             )
 
@@ -245,8 +254,14 @@ def main():
 
         time_vals = [r["run_info"].get("train_time_seconds") for r in records]
         epoch_vals = [r["run_info"].get("epochs_run") for r in records]
+        host_ram_vals = [r["run_info"].get("peak_host_ram_gb") for r in records]
+        gpu_alloc_vals = [r["run_info"].get("peak_gpu_alloc_gb") for r in records]
+        gpu_reserved_vals = [r["run_info"].get("peak_gpu_reserved_gb") for r in records]
         time_mean, time_std, _ = _mean_std(time_vals)
         epoch_mean, epoch_std, _ = _mean_std(epoch_vals)
+        host_ram_mean, host_ram_std, _ = _mean_std(host_ram_vals)
+        gpu_alloc_mean, gpu_alloc_std, _ = _mean_std(gpu_alloc_vals)
+        gpu_reserved_mean, gpu_reserved_std, _ = _mean_std(gpu_reserved_vals)
 
         # Headline (leaderboard) numbers.
         id_f1_mean, id_f1_std, _ = _mean_std(metric_values("id_metrics", args.primary))
@@ -274,6 +289,14 @@ def main():
             "training": {
                 "train_time_seconds": {"mean": time_mean, "std": time_std},
                 "epochs_run": {"mean": epoch_mean, "std": epoch_std},
+            },
+            "resources": {
+                "peak_host_ram_gb": {"mean": host_ram_mean, "std": host_ram_std},
+                "peak_gpu_alloc_gb": {"mean": gpu_alloc_mean, "std": gpu_alloc_std},
+                "peak_gpu_reserved_gb": {
+                    "mean": gpu_reserved_mean,
+                    "std": gpu_reserved_std,
+                },
             },
             "id_metrics_aggregated": id_agg,
             "ood_metrics_aggregated": ood_agg,
@@ -303,6 +326,12 @@ def main():
                 "train_time_seconds_std": time_std,
                 "epochs_run_mean": epoch_mean,
                 "epochs_run_std": epoch_std,
+                "peak_host_ram_gb_mean": host_ram_mean,
+                "peak_host_ram_gb_std": host_ram_std,
+                "peak_gpu_alloc_gb_mean": gpu_alloc_mean,
+                "peak_gpu_alloc_gb_std": gpu_alloc_std,
+                "peak_gpu_reserved_gb_mean": gpu_reserved_mean,
+                "peak_gpu_reserved_gb_std": gpu_reserved_std,
             }
         )
 
@@ -318,7 +347,8 @@ def main():
     header = (
         f"{'model':<40} {'seeds':>5}  "
         f"{'ID MacroF1':>18}  {'ID AvgAcc':>18}  "
-        f"{'OOD MacroF1':>18}  {'OOD AvgAcc':>18}  {'gap':>8}"
+        f"{'OOD MacroF1':>18}  {'OOD AvgAcc':>18}  {'gap':>8}  "
+        f"{'peakRAM_GB':>14}  {'peakVRAM_GB':>14}"
     )
     print(header)
     print("-" * len(header))
@@ -332,7 +362,9 @@ def main():
             f"{_fmt(row['id_avg_acc_mean'], row['id_avg_acc_std']):>18}  "
             f"{_fmt(row['ood_macro_f1_mean'], row['ood_macro_f1_std']):>18}  "
             f"{_fmt(row['ood_avg_acc_mean'], row['ood_avg_acc_std']):>18}  "
-            f"{gap_str:>8}"
+            f"{gap_str:>8}  "
+            f"{_fmt(row['peak_host_ram_gb_mean'], row['peak_host_ram_gb_std']):>14}  "
+            f"{_fmt(row['peak_gpu_alloc_gb_mean'], row['peak_gpu_alloc_gb_std']):>14}"
         )
 
     print(f"\nWrote per-model summaries to: {args.out}/<model>/summary.json")
