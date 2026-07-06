@@ -77,7 +77,7 @@ def launch():
     )
     executor.update_parameters(
         partition=args.partition,
-        mem_per_gpu="55G",
+        mem_per_gpu="256G",
         time=args.time,
         nodes=args.nodes,
         ntasks_per_node=args.tasks_per_node,

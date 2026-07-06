@@ -88,7 +88,7 @@ def main():
     )
     executor.update_parameters(
         partition=args.partition or launch.get("partition"),
-        mem_per_gpu=launch.get("mem_per_gpu", "55G"),
+        mem_per_gpu=launch.get("mem_per_gpu", "256G"),
         time=args.time or int(launch.get("time", 4300)),
         nodes=args.nodes or int(launch.get("nodes", 1)),
         ntasks_per_node=args.tasks_per_node or int(launch.get("tasks_per_node", 1)),
