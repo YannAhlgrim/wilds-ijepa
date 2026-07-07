@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import resource
+import time
 import yaml
 import logging
 
@@ -24,6 +26,32 @@ torch.backends.cudnn.benchmark = True
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
+
+
+def _peak_host_ram_gb():
+    """Peak resident set size (RSS) of this process, in GB.
+
+    Uses resource.getrusage(RUSAGE_SELF).ru_maxrss (kilobytes on Linux). This is
+    the process high-water mark, folded into run_info so the seed aggregator can
+    report peak_host_ram_gb for eval-only runs.
+    """
+    try:
+        maxrss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return float(maxrss_kb) / (1024.0 * 1024.0)
+    except (ValueError, OSError):
+        return None
+
+
+def _peak_gpu_mem_gb(device):
+    """Peak allocated and reserved GPU memory (GB) since the last reset."""
+    if not torch.cuda.is_available():
+        return None, None
+    try:
+        alloc = torch.cuda.max_memory_allocated(device) / 1e9
+        reserved = torch.cuda.max_memory_reserved(device) / 1e9
+        return float(alloc), float(reserved)
+    except (RuntimeError, ValueError):
+        return None, None
 
 
 def strip_module_prefix(state_dict):
@@ -137,6 +165,10 @@ def main(args):
     _load_model_state(model, checkpoint_path, device)
     model.eval()
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats(device)
+    eval_start = time.time()
+
     eval_transform = make_transform_eval(crop_size=crop_size)
     split = data_args.get("split", "test")
     root_path = data_args.get("root_path", "./wilds_data")
@@ -182,10 +214,41 @@ def main(args):
 
     metrics = full_dataset.eval(all_y_pred, all_y_true, all_metadata)
 
+    eval_time_seconds = time.time() - eval_start
+    peak_host_ram_gb = _peak_host_ram_gb()
+    peak_gpu_alloc_gb, peak_gpu_reserved_gb = _peak_gpu_mem_gb(device)
+    run_info = {
+        "seed": seed,
+        "eval_time_seconds": float(eval_time_seconds),
+        "peak_host_ram_gb": peak_host_ram_gb,
+        "peak_gpu_alloc_gb": peak_gpu_alloc_gb,
+        "peak_gpu_reserved_gb": peak_gpu_reserved_gb,
+    }
+
+    # WILDS `full_dataset.eval` returns a (metrics_dict, summary_str) tuple/list.
+    # Wrap it in a dict so run_info + split live alongside the metrics, matching
+    # what tools/aggregate_seeds.py expects (it recurses for the metric keys).
+    if isinstance(metrics, (list, tuple)):
+        metrics_dict = metrics[0] if metrics and isinstance(metrics[0], dict) else {}
+        summary_str = metrics[1] if len(metrics) > 1 else None
+        metrics_out = dict(metrics_dict)
+        if summary_str is not None:
+            metrics_out["summary"] = summary_str
+    elif isinstance(metrics, dict):
+        metrics_out = dict(metrics)
+    else:
+        metrics_out = {"value": metrics}
+    metrics_out["run_info"] = run_info
+    metrics_out["split"] = split
+
     metrics_path = os.path.join(folder, f"{tag}_metrics.json")
     with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2, sort_keys=True)
-    logger.info(f"Eval metrics saved to {metrics_path}")
+        json.dump(metrics_out, f, indent=2, sort_keys=True)
+    logger.info(
+        f"Eval metrics saved to {metrics_path} "
+        f"(peak_host_ram_gb={peak_host_ram_gb}, "
+        f"peak_gpu_alloc_gb={peak_gpu_alloc_gb})"
+    )
     logger.info(f"Eval metrics: {metrics}")
 
     if (
