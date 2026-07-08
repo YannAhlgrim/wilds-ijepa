@@ -258,6 +258,10 @@ def _collect_rows(root_dir, metric_key, col_paths):
                     metrics = json.load(f)
             except (OSError, json.JSONDecodeError):
                 continue
+            # Only consider out-of-distribution (OOD) metrics. WILDS eval files
+            # record their split at the top level; "test" is the OOD split.
+            if not isinstance(metrics, dict) or metrics.get("split") != "test":
+                continue
             value = _find_metric(metrics, metric_key)
             if value is None:
                 continue
