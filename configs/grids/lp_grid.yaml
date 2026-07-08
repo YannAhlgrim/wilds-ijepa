@@ -9,8 +9,8 @@ grid:
   optimization.weight_decay: [5.0e-4, 0]
   optimization.momentum: [0.9]
   optimization.lr_schedule: [cosine]
-  optimization.gradient_accumulation_steps: [8, 16, 32, 64]
-  data.batch_size: [16]
+  optimization.gradient_accumulation_steps: [1]
+  data.batch_size: [128, 256, 512, 1024]
   meta.representation_type: [last_avgpool, last4_avgpool_concat]
   meta.head_type: [linear, bn_linear]
 

@@ -12,7 +12,7 @@ meta:
   use_gradient_checkpointing: true
 
 data:
-  batch_size: 64
+  batch_size: 512
   root_path: ./wilds_data
   num_workers: 10
   pin_mem: true
@@ -33,7 +33,7 @@ optimization:
   lr: 0.001
   weight_decay: 0
   lr_schedule: cosine
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 1
   final_lr: 0.0
   early_stopping:
     enabled: true
