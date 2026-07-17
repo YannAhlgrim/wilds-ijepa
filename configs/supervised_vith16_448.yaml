@@ -10,7 +10,7 @@ meta:
   head_type: bn_linear
 
 data:
-  batch_size: 1024
+  batch_size: 16
   root_path: ./wilds_data
   num_workers: 10
   pin_mem: true
@@ -31,7 +31,7 @@ optimization:
   lr: 0.01
   weight_decay: 5.0e-4
   lr_schedule: cosine
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 64
   final_lr: 0.0
   early_stopping:
     enabled: true
