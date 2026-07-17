@@ -1,0 +1,20 @@
+# Label-efficiency sweep (1%) for vith14_224_in22k
+# Generated from configs/grids/seeds/vith14_224_in22k.yaml
+# Each seed becomes a separate submitit job via tools/run_grid.py.
+base_config: configs/supervised_vith14_224_in22k.yaml
+constants:
+  logging.write_tag: linear_probe
+  data.label_fraction: 0.01
+grid:
+  meta.seed:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+launch:
+  folder: submitit_logs/
+  partition: gpu1
+  nodes: 1
+  tasks_per_node: 1
+  time: 4300

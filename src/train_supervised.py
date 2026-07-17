@@ -366,6 +366,12 @@ def main(args, resume_preempt=False):
         crop_size=d_args["crop_size"],
     )
 
+    label_fraction = d_args.get("label_fraction", None)
+    if label_fraction is not None:
+        logger.info(
+            f"Using label_fraction={label_fraction} for the training split (seed={seed})"
+        )
+
     _, train_loader, train_sampler = make_iwildcam(
         transform=train_transform,
         split="train",
@@ -377,6 +383,8 @@ def main(args, resume_preempt=False):
         num_workers=d_args["num_workers"],
         pin_mem=d_args["pin_mem"],
         drop_last=True,
+        label_fraction=label_fraction,
+        seed=seed,
     )
 
     _, val_loader, val_sampler = make_iwildcam(
@@ -643,6 +651,7 @@ def main(args, resume_preempt=False):
         # Common run-level info folded into every metrics JSON + the params summary.
         run_info = {
             "seed": seed,
+            "label_fraction": label_fraction if label_fraction is not None else 1.0,
             "train_time_seconds": float(train_time_seconds),
             "train_time_hms": _format_hms(train_time_seconds),
             "epochs_run": int(epochs_run),

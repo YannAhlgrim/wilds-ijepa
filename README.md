@@ -119,6 +119,39 @@ Outputs:
 - `experiment_logs/seed-runs/summary_all.csv` (one row per model, paper-ready;
   includes `peak_host_ram_gb_mean/std` and `peak_gpu_alloc_gb_mean/std`)
 
+## Label-efficiency experiments
+
+To measure how well the frozen representations work with fewer labels, train
+linear probes on 1%, 10%, 50%, and 100% of the labeled Source split. The subset
+is stratified by class and deterministic per seed (so every class is represented
+even at 1%).
+
+Grids for all supervised models are generated under `configs/grids/label_efficiency/`.
+Launch the full sweep:
+
+```
+bash tools/run_label_efficiency.sh --partition $slurm_partition --time $time
+```
+
+Run a subset of models or fractions:
+
+```
+bash tools/run_label_efficiency.sh --partition $slurm_partition \
+  --models "vith14_224_in22k vitg16_224_in22k" \
+  --fractions "0.01 0.10 0.50"
+```
+
+Each grid submits one submitit job per seed (5 seeds per fraction). After the
+jobs finish, aggregate into a paper-style Table 4 CSV:
+
+```
+python3 tools/aggregate_label_efficiency.py --root experiment_logs/eval-wilds
+```
+
+Outputs:
+- `experiment_logs/label-efficiency/summary.csv` (columns: 1%, 10%, 50%, 100% OOD F1-Macro)
+- `experiment_logs/label-efficiency/<model>/summary.json`
+
 ## License
 
 See the `LICENSE` file for details about the license under which this code is made available.

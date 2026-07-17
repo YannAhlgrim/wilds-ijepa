@@ -87,6 +87,7 @@ def build_run_name(args):
     add("leps", opt_args.get("lars_eps"))
     add("ipe", opt_args.get("ipe_scale"))
     add("cs", data_args.get("crop_scale"))
+    add("lf", data_args.get("label_fraction"))
     add("eval", val_args.get("eval_every"))
     add("seed", meta_args.get("seed"))
 
