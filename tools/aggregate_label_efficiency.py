@@ -71,7 +71,9 @@ def _extract_run_info(metrics_obj):
                     return found
         return None
 
-    return _search(metrics_obj) if metrics_obj else {}
+    if not metrics_obj:
+        return {}
+    return _search(metrics_obj) or {}
 
 
 def _load_json(path):
@@ -208,7 +210,7 @@ def main():
         if ood_metrics is None:
             continue
 
-        run_info = _extract_run_info(ood_metrics)
+        run_info = _extract_run_info(ood_metrics) or {}
         fraction, seed = _parse_fraction_and_seed(entry, run_info, run_dir)
         value = _find_metric(ood_metrics, args.metric)
 
