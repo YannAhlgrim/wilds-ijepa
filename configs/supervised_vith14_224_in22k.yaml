@@ -28,14 +28,14 @@ mask:
 optimization:
   optimizer: adamw
   freeze_weights: true
-  epochs: 300
+  epochs: 1
   lr: 0.001
   weight_decay: 5.0e-4
   lr_schedule: cosine
   gradient_accumulation_steps: 32
   final_lr: 0.0
   early_stopping:
-    enabled: true
+    enabled: false
     patience: 10
     min_delta: 1.0e-4
     min_epochs: 15
