@@ -8,7 +8,14 @@ Reference: official I-JEPA README https://github.com/facebookresearch/ijepa/blob
 - Supervised training on WILDS-iWildCam labeled dataset: https://arxiv.org/abs/2012.07421 (WILDS: A Benchmark of in-the-Wild Distribution Shifts)
 - Supervised learning supports full fine-tuning or freezing the encoder
 
-<!-- Optional: add a pipeline figure (SSL -> SL) here -->
+<p align="center">
+  <img src="assets/ijepa_masking_turkey.jpg" width="640" alt="I-JEPA masking on an iWildCam camera-trap image">
+</p>
+
+<p align="center">
+  <em>I-JEPA masking on a real iWildCam camera-trap image: the context block (blue) is
+  encoded to predict the representations of several target blocks (green/red/orange).</em>
+</p>
 
 ## Models
 
@@ -16,7 +23,49 @@ Reference: official I-JEPA README https://github.com/facebookresearch/ijepa/blob
 - ViT-H, 16x16 patches, 448x448 resolution (trained)
 - Plan: add a graph comparing models with the WILDS leaderboard https://wilds.stanford.edu/leaderboard/#with-unlabeled-data-1
 
-<!-- Optional: add a WILDS leaderboard comparison graph here -->
+## Results
+
+Linear-probing evaluation on iWildCam2020-WILDS with a **frozen** I-JEPA encoder and a
+single trained linear head. All values are the mean over 5 seeds (±std). The headline
+metric is F1-Macro on the Target Out-of-Distribution (OOD) split; the gap
+Δ = F1(ID) − F1(OOD) measures the drop under distribution shift. Only the
+ImageNet-pretrained checkpoints are reported here.
+
+| Model | ID F1-Macro | OOD F1-Macro | Gap ΔF1 |
+|---|---|---|---|
+| ViT-H/14 (224, IN-1K) | 0.338 ±0.015 | 0.214 ±0.006 | 0.124 |
+| ViT-H/16 (448, IN-1K) | 0.385 ±0.005 | 0.247 ±0.003 | 0.138 |
+| **ViT-H/14 (224, IN-22K)** | 0.348 ±0.003 | **0.260 ±0.003** | 0.088 |
+| ViT-g/16 (224, IN-22K) | 0.371 ±0.002 | 0.255 ±0.003 | 0.116 |
+
+Key takeaways:
+
+- The best frozen probe (**ViT-H/14, IN-22K**) reaches **0.260 OOD F1-Macro**, ranking
+  **#16** on the iWildCam2020-WILDS leaderboard — despite training only a linear head
+  rather than fine-tuning the full backbone.
+- Its ID→OOD generalization gap (ΔF1 = 0.088) is comparable to the full-fine-tuning
+  CLIP leaders on the leaderboard (FLYP ΔF1 = 0.139, AutoFT ΔF1 = 0.115).
+- Absolute F1-Macro scales with pretraining data (IN-22K > IN-1K) and input resolution
+  (the higher-resolution ViT-H/16 448 is the strongest IN-1K checkpoint).
+
+### Label efficiency
+
+Because I-JEPA pretrains without labels, the representations stay useful when labeled
+data is scarce. OOD Target F1-Macro when the linear probe trains on 1%, 10%, 50%, and
+100% of the labeled Source split (mean over 5 seeds):
+
+| Model | 1% | 10% | 50% | 100% |
+|---|---|---|---|---|
+| ViT-H/14 (224, IN-22K) | 0.193 ±0.009 | 0.236 ±0.011 | 0.261 ±0.009 | 0.260 ±0.003 |
+| ViT-g/16 (224, IN-22K) | 0.204 ±0.009 | 0.243 ±0.007 | 0.259 ±0.014 | 0.255 ±0.003 |
+| ViT-H/14 (224, IN-1K) | 0.120 ±0.036 | 0.190 ±0.010 | 0.220 ±0.012 | 0.214 ±0.006 |
+| ViT-H/16 (448, IN-1K) | 0.146 ±0.022 | 0.214 ±0.012 | 0.230 ±0.011 | 0.247 ±0.003 |
+
+A small labeled subset already recovers most of the full-data performance
+(diminishing returns), with the IN-22K backbones degrading most gracefully — a
+practical advantage for wildlife monitoring where labeled camera-trap data is expensive.
+
+These results are from the accompanying master thesis evaluating I-JEPA on iWildCam2020-WILDS.
 
 ## Repo layout
 
