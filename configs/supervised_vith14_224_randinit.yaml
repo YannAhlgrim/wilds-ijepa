@@ -1,0 +1,47 @@
+meta:
+  model_name: vit_huge
+  tag: in22k_randinit
+  embed_dim: 1280
+  load_checkpoint: false
+  use_bfloat16: true
+  num_classes: 182
+  representation_type: last_avgpool
+  head_type: linear
+
+data:
+  batch_size: 16
+  root_path: ./wilds_data
+  num_workers: 10
+  pin_mem: true
+  crop_size: 224
+  use_random_resized_crop: false
+  use_horizontal_flip: false
+  use_color_distortion: false
+  color_jitter_strength: 0.0
+  use_gaussian_blur: false
+
+mask:
+  patch_size: 14
+
+optimization:
+  optimizer: adamw
+  freeze_weights: true
+  epochs: 1
+  lr: 0.001
+  weight_decay: 5.0e-4
+  lr_schedule: cosine
+  gradient_accumulation_steps: 32
+  final_lr: 0.0
+  early_stopping:
+    enabled: false
+    patience: 10
+    min_delta: 1.0e-4
+    min_epochs: 15
+    restore_best_weights: true
+
+validation:
+  eval_every: 1
+
+logging:
+  write_tag: linear_probe
+  auto_folder: true
