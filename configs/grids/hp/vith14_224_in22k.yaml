@@ -1,0 +1,21 @@
+# Small LR / weight-decay grid for vith14_224_in22k linear probe.
+# Current default: lr=0.001, weight_decay=5.0e-4.
+# This grid explores a 3x3 neighborhood around those values on seed 0 first.
+# After screening, pick the best (lr, wd) combo and run a full 5-seed sweep.
+base_config: configs/supervised_vith14_224_in22k.yaml
+
+constants:
+  logging.write_tag: linear_probe
+  optimization.epochs: 300
+
+grid:
+  meta.seed: [0]
+  optimization.lr: [0.0005, 0.001, 0.002]
+  optimization.weight_decay: [0.0001, 0.0005, 0.001]
+
+launch:
+  folder: submitit_logs/
+  partition: gpu1
+  nodes: 1
+  tasks_per_node: 1
+  time: 4300
