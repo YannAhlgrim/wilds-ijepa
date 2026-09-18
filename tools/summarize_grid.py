@@ -1,7 +1,16 @@
 import argparse
 import json
+import math
 import os
 import re
+
+# Strip trailing "-seedN" (and any leftover separators) so runs of the same
+# hyperparameter config collapse into one group.
+_SEED_SUFFIX_RE = re.compile(r"-seed\d+$")
+
+
+def _strip_seed(run_name):
+    return _SEED_SUFFIX_RE.sub("", run_name)
 
 
 def _find_metric(metrics, key):
@@ -273,10 +282,45 @@ def _collect_rows(root_dir, metric_key, col_paths):
             col_values = [
                 _get_in_params(params, cp) for cp in col_paths
             ]
+            base_run_name = _strip_seed(run_name)
             rows.append(
-                (float(value), model_name, patch_size, crop_size, col_values, run_name, path)
+                (
+                    float(value),
+                    model_name,
+                    patch_size,
+                    crop_size,
+                    col_values,
+                    run_name,
+                    base_run_name,
+                    path,
+                )
             )
     return rows
+
+
+def _aggregate_rows(rows):
+    """Group rows by hyperparameter config (seed stripped) and return one row per
+    config with the mean, sample std, and number of seeds.
+    """
+    groups = {}
+    for value, model_name, patch_size, crop_size, col_values, run_name, base_run_name, path in rows:
+        key = (model_name, patch_size, crop_size, tuple(col_values), base_run_name)
+        groups.setdefault(key, []).append((value, run_name, path))
+
+    aggregated = []
+    for key, entries in groups.items():
+        model_name, patch_size, crop_size, col_values, base_run_name = key
+        vals = [e[0] for e in entries]
+        n = len(vals)
+        mean = sum(vals) / n
+        if n > 1:
+            std = math.sqrt(sum((v - mean) ** 2 for v in vals) / (n - 1))
+        else:
+            std = 0.0
+        aggregated.append(
+            (mean, std, n, model_name, patch_size, crop_size, list(col_values), base_run_name, entries)
+        )
+    return aggregated
 
 
 def _format_value(val, width=None):
@@ -370,17 +414,23 @@ def _print_results(model_type, rows, metric_key, col_headers, top, show_run_name
         len(metric_key), max(len(_format_value(v)) for v in metric_vals)
     )
 
+    std_vals = [r[1] for r in display_rows]
+    std_width = max(len("std"), max(len(_format_value(v)) for v in std_vals))
+
+    n_seeds_vals = [r[2] for r in display_rows]
+    n_seeds_width = max(len("n"), max(len(_format_value(v)) for v in n_seeds_vals))
+
     col_widths = []
     for i, ch in enumerate(col_headers):
-        col_vals = [r[4][i] for r in display_rows]
+        col_vals = [r[6][i] for r in display_rows]
         cw = _col_width(ch, col_vals)
         col_widths.append(cw)
 
-    widths = [rank_width, metric_width] + col_widths
-    full_cols = ["#", metric_key] + col_headers
+    widths = [rank_width, metric_width, std_width, n_seeds_width] + col_widths
+    full_cols = ["#", metric_key, "std", "n"] + col_headers
 
     if show_run_name:
-        run_name_vals = [r[5] for r in display_rows]
+        run_name_vals = [r[7] for r in display_rows]
         run_name_width = max(len("run_name"), max(len(v) for v in run_name_vals))
         widths.append(run_name_width)
         full_cols.append("run_name")
@@ -394,10 +444,12 @@ def _print_results(model_type, rows, metric_key, col_headers, top, show_run_name
 
     for idx, row in enumerate(display_rows, start=1):
         metric_str = _format_value(row[0])
-        col_strs = [_format_value(row[4][i]) for i in range(len(col_headers))]
-        vals = [str(idx), metric_str] + col_strs
+        std_str = _format_value(row[1])
+        n_seeds_str = _format_value(row[2])
+        col_strs = [_format_value(row[6][i]) for i in range(len(col_headers))]
+        vals = [str(idx), metric_str, std_str, n_seeds_str] + col_strs
         if show_run_name:
-            vals.append(row[5])
+            vals.append(row[7])
         align = [False] + [True] * (len(full_cols) - 2) + [False]
         _print_row(vals, widths, align)
 
@@ -450,13 +502,15 @@ Examples:
         print("No metrics found.")
         return
 
+    rows = _aggregate_rows(rows)
+
     col_headers = [c.split(".")[-1] for c in args.cols]
 
     groups = {}
     for row in rows:
-        model = row[1]
-        patch = row[2]
-        crop = row[3]
+        model = row[3]
+        patch = row[4]
+        crop = row[5]
         key = f"{model}  patch={patch}  resolution={crop}"
         groups.setdefault(key, []).append(row)
 
