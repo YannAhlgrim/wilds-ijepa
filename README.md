@@ -47,7 +47,8 @@ ImageNet-pretrained checkpoints are reported here.
 - `main_distributed_supervised.py`: entrypoint for distributed supervised training
 - `configs/grids/seeds/`: per-model seed grids for multi-seed paper runs
 - `tools/run_seed_sweep.sh`: launch each model across all seeds (one by one)
-- `tools/aggregate_seeds.py`: aggregate seed runs into mean +/- std (ID + OOD)
+- `tools/aggregate_seeds.py`: aggregate seed runs into mean +/- std (ID + OOD), gap, and relative retention
+- `docs/baselines.md`: frozen DINOv2, MAE, supervised ViT, and CLIP probe launch/analysis commands
 - `requirements.txt`: dependencies
 
 ## Requirements
@@ -131,7 +132,16 @@ Outputs:
 - `experiment_logs/seed-runs/<model>/summary.json` (per-seed rows + mean/std for
   all metrics, training time, epochs, peak memory, and ID-OOD generalization gap)
 - `experiment_logs/seed-runs/summary_all.csv` (one row per model, paper-ready;
-  includes `peak_host_ram_gb_mean/std` and `peak_gpu_alloc_gb_mean/std`)
+  includes `peak_host_ram_gb_mean/std`, `peak_gpu_alloc_gb_mean/std`, and
+  per-seed relative retention `OOD F1 / ID F1`)
+
+## Frozen external-encoder baselines
+
+The repository also supports same-protocol frozen DINOv2, MAE, supervised
+IN-21k ViT, and OpenAI CLIP ViT-L/14 probes (including CLIP at 336 px). See
+[`docs/baselines.md`](docs/baselines.md) for the verified identifiers, reduced
+HP and five-seed SLURM grids, expected outputs, GPU-hour planning estimates,
+and CPU analysis tools.
 
 ## Label-efficiency experiments
 
