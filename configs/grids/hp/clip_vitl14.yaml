@@ -1,0 +1,18 @@
+# Eight-run, single-seed HP grid: 2 LR x 2 heads x 2 representations.
+base_config: configs/supervised_clip_vitl14.yaml
+constants:
+  logging.write_tag: linear_probe
+  optimization.weight_decay: 5.0e-4
+  data.batch_size: 16
+  optimization.gradient_accumulation_steps: 32
+grid:
+  meta.seed: [0]
+  optimization.lr: [0.001, 0.01]
+  meta.head_type: [linear, bn_linear]
+  meta.representation_type: [last_avgpool, last4_avgpool_concat]
+launch:
+  folder: submitit_logs/
+  partition: gpu1
+  nodes: 1
+  tasks_per_node: 1
+  time: 2880

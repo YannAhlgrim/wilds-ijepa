@@ -1,0 +1,18 @@
+# TODO after HP selection: replace lr/head/representation with the selected HP row.
+# The values below are launchable defaults, not experimentally selected optima.
+base_config: configs/supervised_dinov2_vitl14.yaml
+constants:
+  logging.write_tag: linear_probe
+  optimization.lr: 0.001
+  optimization.weight_decay: 5.0e-4
+  optimization.epochs: 100
+  meta.head_type: bn_linear
+  meta.representation_type: last_avgpool
+grid:
+  meta.seed: [0, 1, 2, 3, 4]
+launch:
+  folder: submitit_logs/
+  partition: gpu1
+  nodes: 1
+  tasks_per_node: 1
+  time: 2880
