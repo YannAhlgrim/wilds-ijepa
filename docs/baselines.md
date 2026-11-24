@@ -111,8 +111,14 @@ after a pilot run.
 | OpenAI CLIP ViT-L/14 (336) | 14 | 112 | 70 |
 | **Total** | | **528** | **330** |
 
-The complete HP + five-seed study therefore has a planning budget of **858
+The complete HP + five-seed study therefore has a conservative upper budget of **858
 GPU-hours**. Actual aggregate time is available in `summary_all.csv`.
+
+**Measured reference (I-JEPA probes, thesis runs, one NVIDIA L40S, micro-batch 16):** all
+runs early-stopped after 14 epochs; ViT-H/14 @224 took 2.35–2.38 h per run, ViT-g/16 @224
+2.74 h, ViT-H/16 @448 13.97 h. Scaling by these numbers, a realistic budget is
+≈ 2.5–3 h/run for the 224 px baselines and ≈ 6–8 h/run for CLIP ViT-L/14 @336, i.e. roughly
+**200–250 GPU-hours** for the full study (13 runs × 6 encoders). Run one pilot per encoder first.
 
 ## Analysis commands
 
