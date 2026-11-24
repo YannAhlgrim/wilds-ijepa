@@ -45,8 +45,17 @@ export BASELINE_TIME_MIN=2880
 Every model has exactly 8 runs at seed 0: LR `{1e-3, 1e-2}` x head
 `{linear, bn_linear}` x representation `{last_avgpool, last4_avgpool_concat}`.
 Weight decay is `5e-4`; micro-batch 16 x 32 accumulation steps gives effective
-batch 512. Select using **OOD validation** F1, never test F1. The training CSV
-contains `val_f1` (OOD val) and `id_val_f1` on each evaluation epoch.
+batch 512. After the jobs finish, select using **OOD validation**, never test:
+
+```bash
+python3 tools/select_hparams.py --root experiment_logs/eval-wilds --train-root experiment_logs --out experiment_logs/hparam-selection
+```
+
+Each baseline run evaluates `val`, so the selector uses complete per-seed
+`iwildcam_val_metrics.json` macro-F1 (`val_macro_f1`). If those files are absent,
+it can fall back to best-epoch OOD-val loss from retained training CSVs. The
+report also shows the test-selected configuration for diagnosis only. The
+training CSV contains `val_f1` (OOD val) and `id_val_f1` on each evaluation epoch.
 
 ```bash
 python3 tools/run_grid.py --grid configs/grids/hp/dinov2_vitg14.yaml --folder submitit_logs --partition "$BASELINE_PARTITION" --time "$BASELINE_TIME_MIN"

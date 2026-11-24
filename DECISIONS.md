@@ -29,10 +29,11 @@
   the published OpenAI mean/std and every non-CLIP baseline uses the standard
   ImageNet mean/std explicitly in `data.normalization`. In particular, timm's
   metadata for `vit_huge_patch14_224.orig_in21k` advertises 0.5/0.5 original
-  checkpoint normalization, whereas SPEC R3 explicitly requires ImageNet stats
-  for non-CLIP baselines. The configs follow SPEC so the comparison protocol is
-  explicit and consistent; this can be revisited separately if a strict
-  checkpoint-native supervised-ViT preprocessing ablation is desired.
+  checkpoint normalization, whereas the study protocol explicitly requires
+  ImageNet stats for non-CLIP baselines. The configs follow that protocol,
+  making the comparison explicit and consistent; this can be revisited
+  separately if a strict checkpoint-native supervised-ViT preprocessing
+  ablation is desired.
 - **Legacy I-JEPA behavior is unchanged.** External names are dispatched only
   through an explicit registry. Legacy models still use `init_model` with the
   same arguments, including construction of its unused predictor. Missing
@@ -73,3 +74,30 @@
   optional `sup_vitl16_in21k` suggestion was not added because the requested
   supervised baseline is ViT-H/14 and the six-model launch matrix is already
   complete.
+
+## 2026-11-24 — Validation-only hyperparameter re-selection (M4)
+
+- **No retraining or test-based selection.** `select_hparams.py` reads existing
+  evaluation metrics and training CSVs only. It prioritizes complete per-seed
+  OOD-val macro-F1 from `iwildcam_val_metrics.json`, then complete per-seed
+  minimum OOD-val loss from `linear_probe_r0.csv` with best-epoch OOD-val
+  accuracy as the tiebreak. F1 and loss are never compared numerically; when
+  evidence types are mixed, only the highest-priority complete candidates are
+  ranked. Incomplete candidates remain visible as `incomplete`/unranked.
+- **Run discovery.** Eval runs are immediate children of
+  `experiment_logs/eval-wilds`. New retained logs are found beside those
+  metrics. Old supervised logs are searched as `<train-root>/<run-name>` and in
+  matching nested directories. The old supervised training directory is often
+  absent because training cleanup deletes it after copying the checkpoint.
+  Label-fraction tags are stripped for grouping; a full-label run takes
+  precedence over a fractional run with the same normalized config and seed.
+  Ambiguous fractional duplicates fail rather than silently mixing fractions.
+- **Test metrics are diagnostic only.** Selection computes ID/OOD test
+  mean/sample-std macro-F1 and average accuracy plus per-seed retention for the
+  validation winner. It separately names the test winner so previously selected
+  configurations can be audited without presenting test selection as valid.
+- **Artifact scope.** `export_artifacts.sh` includes only metrics, predictions,
+  params, summaries, and rank CSV logs under `experiment_logs`. The same CSV
+  pattern naturally covers supervised `linear_probe_r*.csv` and pretraining
+  `jepa_r*.csv` loss logs. Checkpoints, images, and WILDS data are excluded;
+  same-day archives are not overwritten.
