@@ -16,10 +16,11 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 from src.datasets.wilds import make_iwildcam
-from src.helper import init_model
+from src.models.factory import init_probe_encoder
+from src.models.external_encoders import is_external_encoder
 from src.models.head import ViTClassifier
 from src.models.loss import make_criterion
-from src.transforms import make_transforms, make_transform_eval
+from src.transforms import make_transforms, make_transform_eval, resolve_normalization
 from src.utils.distributed import init_distributed
 from src.utils.logging import CSVLogger, AverageMeter, resolve_log_dir
 from src.utils.optimizers import LARS
@@ -240,11 +241,16 @@ class EarlyStopping:
             model_module.to(device)
 
 
-def evaluate(model, loader, criterion, device, use_bfloat16):
+def evaluate(model, loader, criterion, device, use_bfloat16, num_classes=None):
     model.eval()
     loss_sum = 0.0
     n_correct = 0.0
     n_total = 0.0
+    confusion = None
+    if num_classes is not None:
+        confusion = torch.zeros(
+            (int(num_classes), int(num_classes)), dtype=torch.int64, device=device
+        )
 
     with torch.no_grad():
         for imgs, labels in loader:
@@ -260,6 +266,12 @@ def evaluate(model, loader, criterion, device, use_bfloat16):
             n_correct += float((preds == labels).sum().item())
             n_total += float(batch_size)
             loss_sum += float(loss.item()) * float(batch_size)
+            if confusion is not None:
+                batch_confusion = torch.bincount(
+                    labels * int(num_classes) + preds,
+                    minlength=int(num_classes) ** 2,
+                ).reshape(int(num_classes), int(num_classes))
+                confusion += batch_confusion
 
     global_loss_sum = distributed_sum(loss_sum, device)
     global_correct = distributed_sum(n_correct, device)
@@ -267,7 +279,31 @@ def evaluate(model, loader, criterion, device, use_bfloat16):
 
     val_loss = global_loss_sum / max(global_total, 1.0)
     val_acc = global_correct / max(global_total, 1.0)
-    return val_loss, val_acc
+    if confusion is None:
+        return val_loss, val_acc
+
+    if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
+        dist.all_reduce(confusion, op=dist.ReduceOp.SUM)
+    val_f1 = macro_f1_from_confusion(confusion)
+    return val_loss, val_acc, val_f1
+
+
+def macro_f1_from_confusion(confusion):
+    """WILDS-compatible macro-F1 over classes present in ground truth."""
+    confusion = confusion.to(dtype=torch.float64)
+    true_positive = confusion.diagonal()
+    support = confusion.sum(dim=1)
+    predicted = confusion.sum(dim=0)
+    denominator = support + predicted
+    per_class = torch.where(
+        denominator > 0,
+        2.0 * true_positive / denominator.clamp_min(1.0),
+        torch.zeros_like(denominator),
+    )
+    present = support > 0
+    if not bool(present.any()):
+        return 0.0
+    return float(per_class[present].mean().item())
 
 
 def main(args, resume_preempt=False):
@@ -291,6 +327,8 @@ def main(args, resume_preempt=False):
     logger.info(f"Using seed {seed}")
     accum_steps = o_args.get("gradient_accumulation_steps", 1)
     use_gradient_checkpointing = m_args.get("use_gradient_checkpointing", True)
+    if is_external_encoder(m_args["model_name"]) and not o_args["freeze_weights"]:
+        raise ValueError("External baseline encoders only support freeze_weights: true")
 
     folder = resolve_log_dir(args, stage="train")
     tag = l_args["write_tag"]
@@ -304,9 +342,9 @@ def main(args, resume_preempt=False):
     latest_path = os.path.join(folder, f"{tag}-latest.pth.tar")
     best_path = os.path.join(folder, f"{tag}-best.pth.tar")
     log_file = os.path.join(folder, f"{tag}_r{rank}.csv")
+    log_per_epoch_f1 = bool(v_args.get("log_per_epoch_f1", False))
 
-    csv_logger = CSVLogger(
-        log_file,
+    csv_fields = [
         ("%d", "epoch"),
         ("%.6f", "train_loss"),
         ("%.6f", "val_loss"),
@@ -315,14 +353,24 @@ def main(args, resume_preempt=False):
         ("%.6f", "best_val_loss"),
         ("%d", "best_epoch"),
         ("%d", "early_stop"),
-    )
+    ]
+    if log_per_epoch_f1:
+        csv_fields += [
+            ("%.6f", "val_f1"),
+            ("%.6f", "id_val_f1"),
+        ]
+    csv_logger = CSVLogger(log_file, *csv_fields)
 
-    encoder, _ = init_model(
+    encoder = init_probe_encoder(
         device=device,
         patch_size=mk_args["patch_size"],
         crop_size=d_args["crop_size"],
         model_name=m_args["model_name"],
         use_gradient_checkpointing=use_gradient_checkpointing,
+        pretrained=m_args.get("pretrained", True) and not os.path.exists(latest_path),
+        meta_args=m_args,
+        data_args=d_args,
+        mask_args=mk_args,
     )
 
     representation_type = m_args.get("representation_type", "last_avgpool")
@@ -380,6 +428,7 @@ def main(args, resume_preempt=False):
             optimizer, T_max=o_args["epochs"], eta_min=o_args["final_lr"]
         )
 
+    normalization = resolve_normalization(d_args.get("normalization", "imagenet"))
     train_transform = make_transforms(
         crop_size=d_args["crop_size"],
         horizontal_flip=d_args["use_horizontal_flip"],
@@ -387,9 +436,11 @@ def main(args, resume_preempt=False):
         color_jitter=d_args["color_jitter_strength"],
         gaussian_blur=d_args["use_gaussian_blur"],
         use_random_resized_crop=d_args.get("use_random_resized_crop", True),
+        normalization=normalization,
     )
     val_transform = make_transform_eval(
         crop_size=d_args["crop_size"],
+        normalization=normalization,
     )
 
     label_fraction = d_args.get("label_fraction", None)
@@ -425,6 +476,22 @@ def main(args, resume_preempt=False):
         pin_mem=d_args["pin_mem"],
         drop_last=False,
     )
+
+    id_val_loader = None
+    id_val_sampler = None
+    if log_per_epoch_f1:
+        _, id_val_loader, id_val_sampler = make_iwildcam(
+            transform=val_transform,
+            split="id_val",
+            batch_size=d_args["batch_size"],
+            root_path=d_args["root_path"],
+            rank=rank,
+            world_size=world_size,
+            collator=None,
+            num_workers=d_args["num_workers"],
+            pin_mem=d_args["pin_mem"],
+            drop_last=False,
+        )
 
     loss_name = o_args.get("loss", "cross_entropy")
     class_counts = _compute_class_counts(train_dataset, m_args["num_classes"])
@@ -522,6 +589,8 @@ def main(args, resume_preempt=False):
     for epoch in range(start_epoch, o_args["epochs"]):
         train_sampler.set_epoch(epoch)
         val_sampler.set_epoch(epoch)
+        if id_val_sampler is not None:
+            id_val_sampler.set_epoch(epoch)
         epochs_run = epoch + 1
 
         model.train()
@@ -557,14 +626,35 @@ def main(args, resume_preempt=False):
         train_loss = distributed_average(loss_meter.avg, device)
 
         do_eval = ((epoch + 1) % eval_every == 0) or (epoch + 1 == o_args["epochs"])
+        val_f1 = float("nan")
+        id_val_f1 = float("nan")
         if do_eval:
-            val_loss, val_acc = evaluate(
-                model=model,
-                loader=val_loader,
-                criterion=criterion,
-                device=device,
-                use_bfloat16=m_args["use_bfloat16"],
-            )
+            if log_per_epoch_f1:
+                val_loss, val_acc, val_f1 = evaluate(
+                    model=model,
+                    loader=val_loader,
+                    criterion=criterion,
+                    device=device,
+                    use_bfloat16=m_args["use_bfloat16"],
+                    num_classes=m_args["num_classes"],
+                )
+                _, _, id_val_f1 = evaluate(
+                    model=model,
+                    loader=id_val_loader,
+                    criterion=criterion,
+                    device=device,
+                    use_bfloat16=m_args["use_bfloat16"],
+                    num_classes=m_args["num_classes"],
+                )
+            else:
+                # Preserve the legacy I-JEPA validation path byte-for-byte.
+                val_loss, val_acc = evaluate(
+                    model=model,
+                    loader=val_loader,
+                    criterion=criterion,
+                    device=device,
+                    use_bfloat16=m_args["use_bfloat16"],
+                )
             is_best, should_stop = early_stopper.step(epoch + 1, val_loss, model.module)
         else:
             val_loss = float("nan")
@@ -578,8 +668,12 @@ def main(args, resume_preempt=False):
             logger.info(
                 f"Epoch {epoch + 1} done | train_loss={train_loss:.6f} val_loss={val_loss:.6f} val_acc={val_acc:.6f} best_val_loss={early_stopper.best_metric:.6f}"
             )
+            if log_per_epoch_f1:
+                logger.info(
+                    f"Epoch {epoch + 1} F1 | val_f1={val_f1:.6f} id_val_f1={id_val_f1:.6f}"
+                )
 
-        csv_logger.log(
+        csv_values = [
             epoch + 1,
             train_loss,
             val_loss,
@@ -588,7 +682,10 @@ def main(args, resume_preempt=False):
             early_stopper.best_metric,
             early_stopper.best_epoch,
             int(should_stop),
-        )
+        ]
+        if log_per_epoch_f1:
+            csv_values += [val_f1, id_val_f1]
+        csv_logger.log(*csv_values)
 
         save_checkpoint(epoch + 1, train_loss, val_loss, val_acc, is_best=is_best)
 
@@ -644,7 +741,7 @@ def main(args, resume_preempt=False):
         ]
 
         def _make_eval_args(split, write_tag):
-            return {
+            eval_args = {
                 "meta": {
                     "seed": seed,
                     "model_name": m_args["model_name"],
@@ -671,6 +768,10 @@ def main(args, resume_preempt=False):
                     "auto_folder": True,
                 },
             }
+            if is_external_encoder(m_args["model_name"]):
+                eval_args["meta"]["pretrained"] = False
+                eval_args["data"]["normalization"] = d_args["normalization"]
+            return eval_args
 
         eval_results = {}
         eval_folder = None
@@ -788,6 +889,13 @@ def main(args, resume_preempt=False):
                 logger.warning("Could not write supervised params to eval folder")
 
         if os.path.exists(folder):
+            if log_per_epoch_f1 and eval_folder and os.path.exists(log_file):
+                try:
+                    curve_copy = os.path.join(eval_folder, os.path.basename(log_file))
+                    shutil.copy(log_file, curve_copy)
+                    logger.info(f"Per-epoch validation metrics copied to {curve_copy}")
+                except OSError:
+                    logger.warning("Could not preserve per-epoch validation CSV")
             try:
                 shutil.rmtree(folder)
             except OSError:

@@ -15,6 +15,29 @@ import torchvision.transforms as transforms
 _GLOBAL_SEED = 0
 logger = getLogger()
 
+NORMALIZATION_STATS = {
+    "imagenet": (
+        (0.485, 0.456, 0.406),
+        (0.229, 0.224, 0.225),
+    ),
+    "clip": (
+        (0.48145466, 0.4578275, 0.40821073),
+        (0.26862954, 0.26130258, 0.27577711),
+    ),
+}
+
+
+def resolve_normalization(name="imagenet"):
+    """Resolve an explicit preprocessing preset without altering legacy defaults."""
+    if isinstance(name, str):
+        key = name.lower()
+        if key not in NORMALIZATION_STATS:
+            choices = ", ".join(sorted(NORMALIZATION_STATS))
+            raise ValueError(f"Unknown normalization {name!r}; choose from {choices}")
+        return NORMALIZATION_STATS[key]
+    # Keep accepting a (mean, std) pair for direct callers of make_transforms.
+    return name
+
 
 def make_transforms(
     crop_size=224,

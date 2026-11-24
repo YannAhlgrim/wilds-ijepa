@@ -12,9 +12,9 @@ import torch
 import torch.distributed as dist
 
 from src.datasets.wilds import make_iwildcam_eval
-from src.helper import init_model
+from src.models.factory import init_probe_encoder
 from src.models.head import ViTClassifier
-from src.transforms import make_transform_eval
+from src.transforms import make_transform_eval, resolve_normalization
 from src.utils.distributed import init_distributed
 from src.utils.logging import resolve_log_dir
 
@@ -147,11 +147,15 @@ def main(args):
     use_bfloat16 = bool(meta_args.get("use_bfloat16", True))
     use_autocast = use_bfloat16 and torch.cuda.is_available()
 
-    encoder, _ = init_model(
+    encoder = init_probe_encoder(
         device=device,
         patch_size=patch_size,
         crop_size=crop_size,
         model_name=model_name,
+        pretrained=meta_args.get("pretrained", True),
+        meta_args=meta_args,
+        data_args=data_args,
+        mask_args={"patch_size": patch_size},
     )
     model = ViTClassifier(
         encoder,
@@ -169,7 +173,10 @@ def main(args):
         torch.cuda.reset_peak_memory_stats(device)
     eval_start = time.time()
 
-    eval_transform = make_transform_eval(crop_size=crop_size)
+    eval_transform = make_transform_eval(
+        crop_size=crop_size,
+        normalization=resolve_normalization(data_args.get("normalization", "imagenet")),
+    )
     split = data_args.get("split", "test")
     root_path = data_args.get("root_path", "./wilds_data")
 

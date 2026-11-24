@@ -15,7 +15,7 @@ class ViTClassifier(nn.Module):
         self.encoder = encoder
         self.representation_type = str(representation_type).lower()
 
-        if self.representation_type == "last_avgpool":
+        if self.representation_type in ("last_avgpool", "cls"):
             in_dim = embed_dim
         elif self.representation_type == "last4_avgpool_concat":
             in_dim = 4 * embed_dim
@@ -39,6 +39,13 @@ class ViTClassifier(nn.Module):
                 nn.init.zeros_(module.bias)
 
     def _extract_representation(self, x):
+        if self.representation_type == "cls":
+            if not hasattr(self.encoder, "forward_cls"):
+                raise ValueError(
+                    "representation_type='cls' requires an external encoder with a CLS token"
+                )
+            return self.encoder.forward_cls(x)
+
         if self.representation_type == "last_avgpool":
             features = self.encoder(x)
             return features.mean(dim=1)
