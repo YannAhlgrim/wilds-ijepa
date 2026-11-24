@@ -1,7 +1,9 @@
 *.swp
 *.swo
 __pycache__
+.pytest_cache/
 .venv/
+tmlr_artifacts_*.tar.gz
 experiment_logs/
 wilds_data/
 submitit_logs/
