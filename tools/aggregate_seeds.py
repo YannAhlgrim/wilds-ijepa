@@ -10,7 +10,8 @@ evaluation metrics for both splits:
 
 and computes, across seeds, the mean and std of every WILDS metric plus the
 training time and epochs recorded during training. It also reports the
-generalization gap (ID - OOD) on the headline metric.
+generalization gap (ID - OOD) and per-seed relative retention (OOD / ID) on the
+headline metric.
 
 Leaderboard columns reported:
   Test ID Macro F1 | Test ID Avg Acc | Test OOD Macro F1 | Test OOD Avg Acc
@@ -30,6 +31,11 @@ import json
 import math
 import os
 import re
+
+try:
+    from tools.retention import relative_retention, summarize_retention
+except ImportError:  # Direct execution puts tools/ rather than the repo on sys.path.
+    from retention import relative_retention, summarize_retention
 
 
 ID_METRICS_FILE = "iwildcam_id_test_metrics.json"
@@ -272,6 +278,8 @@ def main():
         "ood_avg_acc_mean",
         "ood_avg_acc_std",
         "gen_gap_macro_f1_mean",  # ID - OOD on primary metric
+        "retention_macro_f1_mean",  # mean over seeds of OOD / ID
+        "retention_macro_f1_std",
         "train_time_seconds_mean",
         "train_time_seconds_std",
         "epochs_run_mean",
@@ -312,6 +320,10 @@ def main():
                         "macro_f1": _find_metric(r["ood_metrics"], args.primary),
                         "avg_acc": _find_metric(r["ood_metrics"], args.acc),
                     },
+                    "retention_macro_f1": relative_retention(
+                        _find_metric(r["id_metrics"], args.primary),
+                        _find_metric(r["ood_metrics"], args.primary),
+                    ),
                     "train_time_seconds": r["run_info"].get("train_time_seconds"),
                     "train_time_hms": r["run_info"].get("train_time_hms"),
                     "epochs_run": r["run_info"].get("epochs_run"),
@@ -367,6 +379,10 @@ def main():
         gen_gap = None
         if id_f1_mean is not None and ood_f1_mean is not None:
             gen_gap = id_f1_mean - ood_f1_mean
+        retention = summarize_retention(
+            metric_values("id_metrics", args.primary),
+            metric_values("ood_metrics", args.primary),
+        )
 
         summary = {
             "model": group_name,
@@ -380,7 +396,11 @@ def main():
                 "test_ood_macro_f1": {"mean": ood_f1_mean, "std": ood_f1_std},
                 "test_ood_avg_acc": {"mean": ood_acc_mean, "std": ood_acc_std},
                 "generalization_gap_macro_f1": gen_gap,
-            },
+                "retention_macro_f1": {
+                    "mean": retention["mean"],
+                    "std": retention["std"],
+                    "n": retention["n"],
+                },            },
             "training": {
                 "train_time_seconds": {"mean": time_mean, "std": time_std},
                 "epochs_run": {"mean": epoch_mean, "std": epoch_std},
@@ -417,6 +437,8 @@ def main():
                 "ood_avg_acc_mean": ood_acc_mean,
                 "ood_avg_acc_std": ood_acc_std,
                 "gen_gap_macro_f1_mean": gen_gap,
+                "retention_macro_f1_mean": retention["mean"],
+                "retention_macro_f1_std": retention["std"],
                 "train_time_seconds_mean": time_mean,
                 "train_time_seconds_std": time_std,
                 "epochs_run_mean": epoch_mean,
@@ -442,7 +464,7 @@ def main():
     header = (
         f"{'model':<40} {'seeds':>5}  "
         f"{'ID MacroF1':>18}  {'ID AvgAcc':>18}  "
-        f"{'OOD MacroF1':>18}  {'OOD AvgAcc':>18}  {'gap':>8}  "
+        f"{'OOD MacroF1':>18}  {'OOD AvgAcc':>18}  {'gap':>8}  {'R':>8}  "
         f"{'peakRAM_GB':>14}  {'peakVRAM_GB':>14}"
     )
     print(header)
@@ -450,6 +472,8 @@ def main():
     for row in csv_rows:
         gap = row["gen_gap_macro_f1_mean"]
         gap_str = "" if gap is None else f"{gap:.4f}"
+        retention_mean = row["retention_macro_f1_mean"]
+        retention_str = "" if retention_mean is None else f"{retention_mean:.4f}"
         model_str = row["model"][:40]
         print(
             f"{model_str:<40} {row['num_seeds']:>5}  "
@@ -457,7 +481,7 @@ def main():
             f"{_fmt(row['id_avg_acc_mean'], row['id_avg_acc_std']):>18}  "
             f"{_fmt(row['ood_macro_f1_mean'], row['ood_macro_f1_std']):>18}  "
             f"{_fmt(row['ood_avg_acc_mean'], row['ood_avg_acc_std']):>18}  "
-            f"{gap_str:>8}  "
+            f"{gap_str:>8}  {retention_str:>8}  "
             f"{_fmt(row['peak_host_ram_gb_mean'], row['peak_host_ram_gb_std']):>14}  "
             f"{_fmt(row['peak_gpu_alloc_gb_mean'], row['peak_gpu_alloc_gb_std']):>14}"
         )
