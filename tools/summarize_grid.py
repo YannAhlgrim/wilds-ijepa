@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import sys
 
 # Strip trailing "-seedN" (and any leftover separators) so runs of the same
 # hyperparameter config collapse into one group.
@@ -255,7 +256,7 @@ def _get_crop_size(params):
     return cs if cs is not None else "unknown"
 
 
-def _collect_rows(root_dir, metric_key, col_paths):
+def _collect_rows(root_dir, metric_key, col_paths, split="val"):
     rows = []
     for dirpath, _, filenames in os.walk(root_dir):
         for fname in filenames:
@@ -267,9 +268,9 @@ def _collect_rows(root_dir, metric_key, col_paths):
                     metrics = json.load(f)
             except (OSError, json.JSONDecodeError):
                 continue
-            # Only consider out-of-distribution (OOD) metrics. WILDS eval files
-            # record their split at the top level; "test" is the OOD split.
-            if not isinstance(metrics, dict) or metrics.get("split") != "test":
+            # WILDS eval files record their split at the top level. Validation
+            # is the default; test is available only as an explicit diagnostic.
+            if not isinstance(metrics, dict) or metrics.get("split") != split:
                 continue
             value = _find_metric(metrics, metric_key)
             if value is None:
@@ -472,6 +473,12 @@ Examples:
         help="root folder for eval logs (default: %(default)s)",
     )
     parser.add_argument(
+        "--split",
+        choices=("val", "id_val", "id_test", "test"),
+        default="val",
+        help="WILDS split to summarize (default: OOD validation)",
+    )
+    parser.add_argument(
         "--metric",
         default="macro_f1",
         help="metric key to rank by (default: %(default)s)",
@@ -496,7 +503,13 @@ Examples:
     )
     args = parser.parse_args()
 
-    rows = _collect_rows(args.root, args.metric, args.cols)
+    if args.split == "test":
+        print(
+            "WARNING: OOD test-based selection is not valid for reporting. "
+            "Use --split val or tools/select_hparams.py instead.",
+            file=sys.stderr,
+        )
+    rows = _collect_rows(args.root, args.metric, args.cols, split=args.split)
 
     if not rows:
         print("No metrics found.")
