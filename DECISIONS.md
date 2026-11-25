@@ -137,3 +137,8 @@
   includes cached selection/prediction/epoch files and feature manifests but no
   feature arrays, so documented feature cleanup is safe only after archive
   verification and job completion.
+- **Resident probe I/O.** Each stage sequentially reads a split/representation
+  once per process, keeps float16 features on the selected device, and casts
+  indexed mini-batches to float32. Seeded training randperm and sequential eval
+  replace DataLoader row reads. `drop_last=False`, label-fraction sampling,
+  summary-based resume, and all author-facing sbatch commands remain unchanged.

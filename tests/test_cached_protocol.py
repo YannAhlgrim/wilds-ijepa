@@ -72,6 +72,8 @@ def test_cached_protocol_end_to_end_cpu_smoke(tmp_path):
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "[1/1]" in completed.stdout
+    assert "[1/2]" in completed.stdout and "[2/2]" in completed.stdout
     assert time.monotonic() - started < 120
     summaries = list(out.rglob("summary.json"))
     # 1 grid + 2 full-seed + (3 fractions x 2 seeds) = 9 runs.
@@ -80,7 +82,9 @@ def test_cached_protocol_end_to_end_cpu_smoke(tmp_path):
         summary = json.loads(path.read_text())
         assert summary["best_epoch"] == 1
         assert summary["metrics"]["val"]["F1-macro_all"] >= 0
+        assert summary["wall_time_seconds"] > 0
         assert (path.parent / "epochs.csv").is_file()
+        assert "epoch_time_seconds" in (path.parent / "epochs.csv").read_text().splitlines()[0]
     selection = json.loads((out / "synthetic/selection/cached_selection.json").read_text())
     assert selection["models"]["synthetic"]["full_seed_results"]["num_seeds"] == 2
     assert set(selection["models"]["synthetic"]["label_efficiency"]) == {"0.01", "0.1", "0.5"}

@@ -136,6 +136,23 @@ settings are AdamW, cosine LR to zero, cross-entropy, true mini-batches (no
 accumulation), patience 10, min-delta `1e-4`, and at most 100 epochs. Early
 stopping and checkpoint restoration use **OOD-val macro-F1 only**.
 
+### Probing I/O and timing
+
+Each `probe_cached.py` stage is one Python process covering all of that stage's
+configurations and seeds. On the first access for a split/representation, the
+process sequentially reads each `.npy` once and moves features/labels to the
+selected device as float16/long tensors. Subsequent runs reuse those resident
+tensors; there is no mmap/DataLoader row access on the shared filesystem. Only
+selected mini-batches are cast to float32. Training uses run-seeded
+`torch.randperm`; evaluation uses sequential slices. Stratified label fractions
+are applied to resident indices. `drop_last=False` remains unchanged, so the
+final true mini-batch is used even when smaller.
+
+Runs with an existing `summary.json` are skipped after a timeout/resubmission.
+Progress lines show `[current/total]`; `epochs.csv` adds `epoch_time_seconds`,
+and `summary.json` retains per-run wall/train timings. The sbatch commands and
+environment variables are unchanged.
+
 The underlying individual commands are:
 
 ```bash
@@ -219,4 +236,8 @@ Feature extraction dominates encoder setup but happens once. The 180 cached
 runs per encoder (160 + 5 + 15) then avoid encoder forwards. Expect minutes,
 rather than hours, per head on one GPU; exact time depends strongly on feature
 width, early stopping, and mmap/I/O. Benchmark a pilot before reserving CPU
-time for the full grid. Synthetic CPU protocol tests complete in seconds.
+time for the full grid. Synthetic CPU protocol tests complete in seconds. As a
+specific I/O/head benchmark, one synthetic zero-feature epoch with 130,000 x
+5120 float16 inputs, 182 classes, batch 1024, and six CPU threads took 3.05 s
+(3.87 s including setup, tiny validation, and restore). This measures the new
+batching path, not real-data accuracy or L40S throughput.

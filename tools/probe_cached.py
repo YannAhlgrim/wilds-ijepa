@@ -10,6 +10,7 @@ import sys
 import time
 
 import numpy as np
+import torch
 import yaml
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -70,14 +71,32 @@ def config_slug(config):
     )
 
 
-def _load_split(features_dir, split, representation):
+_SPLIT_CACHE = {}
+
+
+def _load_split(features_dir, split, representation, device="cpu"):
+    """Sequentially load each split/representation once per Python process."""
+    key = (os.path.abspath(features_dir), split, representation, str(torch.device(device)))
+    if key in _SPLIT_CACHE:
+        return _SPLIT_CACHE[key]
     prefix = os.path.join(features_dir, split)
-    features = np.load(f"{prefix}_{representation}.npy", mmap_mode="r", allow_pickle=False)
-    labels = np.load(f"{prefix}_y.npy", mmap_mode="r", allow_pickle=False)
-    metadata = np.load(f"{prefix}_metadata.npy", mmap_mode="r", allow_pickle=False)
-    if len(features) != len(labels) or len(labels) != len(metadata):
+    # No mmap: these three reads are contiguous and happen only on a cache miss.
+    features_np = np.load(f"{prefix}_{representation}.npy", allow_pickle=False)
+    labels_np = np.load(f"{prefix}_y.npy", allow_pickle=False)
+    metadata_np = np.load(f"{prefix}_metadata.npy", allow_pickle=False)
+    if len(features_np) != len(labels_np) or len(labels_np) != len(metadata_np):
         raise ValueError(f"Cached split {split} has inconsistent array lengths")
-    return features, labels, metadata
+    target = torch.device(device)
+    features = torch.from_numpy(features_np).to(device=target, dtype=torch.float16)
+    labels = torch.from_numpy(labels_np).to(device=target, dtype=torch.long)
+    _SPLIT_CACHE[key] = (features, labels, metadata_np)
+    print(
+        f"[cache] {split}/{representation}: {tuple(features.shape)} float16 on {target}; "
+        f"{features_np.nbytes / 1e9:.3f} GB sequential source read",
+        flush=True,
+    )
+    return _SPLIT_CACHE[key]
+
 
 
 def _atomic_json(path, value):
@@ -112,12 +131,18 @@ def run_one_configuration(
     os.makedirs(run_dir, exist_ok=True)
     started = time.perf_counter()
     representation = config["representation_type"]
-    train_features, train_labels, train_metadata = _load_split(features_dir, "train", representation)
-    val_features, val_labels, val_metadata = _load_split(features_dir, "val", representation)
-    id_val_features, id_val_labels, id_val_metadata = _load_split(features_dir, "id_val", representation)
+    cached_splits = {
+        split: _load_split(features_dir, split, representation, device=device)
+        for split in ("train", "val", "id_val", "id_test", "test")
+    }
+    train_features, train_labels, train_metadata = cached_splits["train"]
+    val_features, val_labels, val_metadata = cached_splits["val"]
+    id_val_features, id_val_labels, id_val_metadata = cached_splits["id_val"]
     indices = None
     if label_fraction < 1.0:
-        indices = _stratified_subset_indices(train_labels, label_fraction, seed)
+        indices = _stratified_subset_indices(
+            train_labels.detach().cpu().numpy(), label_fraction, seed
+        )
     head, history, early, early_stopped = train_cached_head(
         train_features,
         train_labels,
@@ -144,10 +169,7 @@ def run_one_configuration(
 
     metrics = {}
     for split in ("train", "val", "id_val", "id_test", "test"):
-        if split == "train":
-            features, labels, metadata = train_features, train_labels, train_metadata
-        else:
-            features, labels, metadata = _load_split(features_dir, split, representation)
+        features, labels, metadata = cached_splits[split]
         split_metrics, predictions, _ = evaluate_head(
             head, features, labels, metadata, int(config["batch_size"]), device
         )
@@ -206,6 +228,8 @@ def main(argv=None):
     with open(os.path.join(args.features, "manifest.json"), "r") as handle:
         manifest = json.load(handle)
     _, configurations = load_grid(args.grid)
+    total_runs = len(configurations) * len(args.seeds)
+    run_index = 0
     for config in configurations:
         if args.max_epochs is not None:
             config["max_epochs"] = args.max_epochs
@@ -218,6 +242,11 @@ def main(argv=None):
         ):
             raise ValueError("CLS grid requested but this encoder has no cached CLS features")
         for seed in args.seeds:
+            run_index += 1
+            print(
+                f"[{run_index}/{total_runs}] {args.stage} seed={seed} {config_slug(config)}",
+                flush=True,
+            )
             run_one_configuration(
                 args.features,
                 manifest,

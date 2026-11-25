@@ -1,6 +1,7 @@
-"""Training primitives for heads on memory-mapped cached features."""
+"""Training on process-resident cached tensors with index-based mini-batches."""
 
 import copy
+import time
 
 import numpy as np
 import torch
@@ -9,23 +10,18 @@ import torch.nn as nn
 from src.cached.metrics import evaluate_iwildcam
 
 
-class FeatureDataset(torch.utils.data.Dataset):
-    def __init__(self, features, labels, indices=None):
-        self.features = features
-        self.labels = labels
-        self.indices = None if indices is None else np.asarray(indices, dtype=np.int64)
+def _features_on_device(features, device):
+    return torch.as_tensor(features).to(device=device, dtype=torch.float16)
 
-    def __len__(self):
-        return len(self.features) if self.indices is None else len(self.indices)
 
-    def __getitem__(self, index):
-        if self.indices is not None:
-            index = int(self.indices[index])
-        # Batch indexing touches only the required mmap pages and returns a
-        # writable float32 tensor, avoiding numpy's read-only mmap warning.
-        feature = torch.from_numpy(np.array(self.features[index], dtype=np.float32, copy=True))
-        label = torch.tensor(int(self.labels[index]), dtype=torch.long)
-        return feature, label
+def _labels_on_device(labels, device):
+    return torch.as_tensor(labels).to(device=device, dtype=torch.long).reshape(-1)
+
+
+def _labels_numpy(labels):
+    if isinstance(labels, torch.Tensor):
+        return labels.detach().cpu().numpy()
+    return np.asarray(labels)
 
 
 def make_cached_head(input_dim, num_classes, head_type):
@@ -76,26 +72,28 @@ class MaxEarlyStopping:
 
 
 def evaluate_head(head, features, labels, metadata, batch_size, device):
-    loader = torch.utils.data.DataLoader(
-        FeatureDataset(features, labels), batch_size=batch_size, shuffle=False
-    )
+    """Evaluate in sequential slices without per-item Python/DataLoader IO."""
+    device = torch.device(device)
+    features = _features_on_device(features, device)
+    labels = _labels_on_device(labels, device)
     criterion = nn.CrossEntropyLoss()
     predictions = []
-    loss_sum = 0.0
+    loss_sum = torch.zeros((), device=device)
     count = 0
     head.eval()
     with torch.no_grad():
-        for features_batch, labels_batch in loader:
-            features_batch = features_batch.to(device)
-            labels_batch = labels_batch.to(device)
+        for start in range(0, len(features), int(batch_size)):
+            end = min(start + int(batch_size), len(features))  # drop_last=False
+            features_batch = features[start:end].float()
+            labels_batch = labels[start:end]
             logits = head(features_batch)
             loss = criterion(logits, labels_batch)
-            loss_sum += float(loss.item()) * int(labels_batch.shape[0])
-            count += int(labels_batch.shape[0])
+            loss_sum += loss.detach() * (end - start)
+            count += end - start
             predictions.append(logits.argmax(dim=1).cpu().numpy())
     predictions = np.concatenate(predictions)
-    metrics, summary = evaluate_iwildcam(predictions, np.asarray(labels), metadata)
-    metrics["loss"] = loss_sum / max(count, 1)
+    metrics, summary = evaluate_iwildcam(predictions, _labels_numpy(labels), metadata)
+    metrics["loss"] = float(loss_sum.item()) / max(count, 1)
     return metrics, predictions, summary
 
 
@@ -115,22 +113,27 @@ def train_cached_head(
     device,
     train_indices=None,
 ):
-    """Train and restore a head using only OOD-val F1 for early stopping."""
+    """Train/restore using seeded on-device indices and only OOD-val F1."""
     device = torch.device(device)
     torch.manual_seed(int(seed))
     np.random.seed(int(seed))
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(int(seed))
     batch_size = int(config["batch_size"])
-    train_dataset = FeatureDataset(train_features, train_labels, indices=train_indices)
-    generator = torch.Generator().manual_seed(int(seed))
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        generator=generator,
-        drop_last=False,
-    )
+    train_features = _features_on_device(train_features, device)
+    train_labels = _labels_on_device(train_labels, device)
+    val_features = _features_on_device(val_features, device)
+    val_labels = _labels_on_device(val_labels, device)
+    id_val_features = _features_on_device(id_val_features, device)
+    id_val_labels = _labels_on_device(id_val_labels, device)
+    if train_indices is None:
+        active_indices = torch.arange(len(train_features), dtype=torch.long, device=device)
+    else:
+        active_indices = torch.as_tensor(train_indices, dtype=torch.long, device=device).reshape(-1)
+    if len(active_indices) == 0:
+        raise ValueError("Training subset is empty")
+    # A dedicated CPU generator makes run-seed order independent of global RNG.
+    generator = torch.Generator(device="cpu").manual_seed(int(seed))
     head = make_cached_head(int(train_features.shape[1]), num_classes, config["head_type"]).to(device)
     optimizer = torch.optim.AdamW(
         head.parameters(), lr=float(config["lr"]), weight_decay=float(config["weight_decay"])
@@ -147,19 +150,24 @@ def train_cached_head(
     history = []
     early_stopped = False
     for epoch in range(1, int(config["max_epochs"]) + 1):
+        epoch_started = time.perf_counter()
         head.train()
-        loss_sum = 0.0
+        loss_sum = torch.zeros((), device=device)
         count = 0
+        order = torch.randperm(len(active_indices), generator=generator).to(device)
+        order = active_indices.index_select(0, order)
         optimizer.zero_grad()
-        for features_batch, labels_batch in train_loader:
-            features_batch = features_batch.to(device)
-            labels_batch = labels_batch.to(device)
+        for start in range(0, len(order), batch_size):
+            # Preserve existing drop_last=False behavior, including for BN.
+            batch_indices = order[start : min(start + batch_size, len(order))]
+            features_batch = train_features.index_select(0, batch_indices).float()
+            labels_batch = train_labels.index_select(0, batch_indices)
             logits = head(features_batch)
             loss = criterion(logits, labels_batch)
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            loss_sum += float(loss.item()) * int(labels_batch.shape[0])
+            loss_sum += loss.detach() * int(labels_batch.shape[0])
             count += int(labels_batch.shape[0])
         val_metrics, _, _ = evaluate_head(
             head, val_features, val_labels, val_metadata, batch_size, device
@@ -171,7 +179,7 @@ def train_cached_head(
         history.append(
             {
                 "epoch": epoch,
-                "train_loss": loss_sum / max(count, 1),
+                "train_loss": float(loss_sum.item()) / max(count, 1),
                 "val_loss": val_metrics["loss"],
                 "val_f1": val_metrics["F1-macro_all"],
                 "id_val_f1": id_val_metrics["F1-macro_all"],
@@ -180,6 +188,7 @@ def train_cached_head(
                 "best_epoch": early.best_epoch,
                 "improved": int(improved),
                 "early_stop": int(should_stop),
+                "epoch_time_seconds": float(time.perf_counter() - epoch_started),
             }
         )
         scheduler.step()

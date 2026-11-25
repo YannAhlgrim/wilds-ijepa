@@ -27,6 +27,9 @@ SEEDS="${SEEDS:-0 1 2 3 4}"
   --runs "${OUT}/${KEY}" --out "${OUT}/${KEY}/selection-stage1"
 SELECTED="${OUT}/${KEY}/selection-stage1/${KEY}_selected.yaml"
 
+# Each probe_cached.py invocation handles every config x seed in its stage in a
+# single Python process. Device-resident arrays are shared across those runs;
+# completed summary.json files are still skipped after a timeout/resubmission.
 # shellcheck disable=SC2086
 "${PYTHON}" tools/probe_cached.py \
   --features "${FEATURES}" --grid "${SELECTED}" --seeds ${SEEDS} \
