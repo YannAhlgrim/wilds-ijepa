@@ -19,15 +19,15 @@ ablation but is not in the main grid. For both CLIP models this is the
 | `dinov2_vitg14` | `vit_giant_patch14_dinov2.lvd142m` | 224, patch 14 | 1536 | ImageNet |
 | `dinov2_vitl14` | `vit_large_patch14_dinov2.lvd142m` | 224, patch 14 | 1024 | ImageNet |
 | `mae_vith14` | `vit_huge_patch14_224.mae` | 224, patch 14 | 1280 | ImageNet |
-| `sup_vith14_in21k` | `vit_huge_patch14_224.orig_in21k` | 224, patch 14 | 1280 | ImageNet |
+| `sup_vith14_in21k` | `vit_huge_patch14_224.orig_in21k` | 224, patch 14 | 1280 | Inception (0.5/0.5) |
 | `clip_vitl14` | `vit_large_patch14_clip_224.openai` | 224, patch 14 | 1024 | OpenAI CLIP |
 | `clip_vitl14_336` | `vit_large_patch14_clip_336.openai` | 336, patch 14 | 1024 | OpenAI CLIP |
 
 Install the pinned project stack plus `timm>=0.9.16,<2`. On the first run timm
 downloads public weights into its normal cache. No GitHub hub repository is
-executed. The supervised IN-21k model intentionally uses ImageNet statistics as
-required by the study protocol; see `DECISIONS.md` for the distinction from
-timm's original-checkpoint metadata.
+executed. Every external model uses its timm-native normalization: the
+supervised IN-21k model uses 0.5/0.5 mean/std, DINOv2 and MAE use ImageNet
+statistics, and CLIP uses OpenAI's statistics; see `DECISIONS.md`.
 
 ## SLURM launch commands
 

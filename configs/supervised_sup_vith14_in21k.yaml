@@ -16,7 +16,7 @@ data:
   num_workers: 10
   pin_mem: true
   crop_size: 224
-  normalization: imagenet
+  normalization: inception
   use_random_resized_crop: false
   use_horizontal_flip: false
   use_color_distortion: false

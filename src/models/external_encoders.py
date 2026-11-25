@@ -35,7 +35,7 @@ EXTERNAL_ENCODERS = {
         "vit_huge_patch14_224.mae", 1280, 14, 224, "imagenet"
     ),
     "sup_vith14_in21k": ExternalEncoderSpec(
-        "vit_huge_patch14_224.orig_in21k", 1280, 14, 224, "imagenet"
+        "vit_huge_patch14_224.orig_in21k", 1280, 14, 224, "inception"
     ),
     "clip_vitl14": ExternalEncoderSpec(
         "vit_large_patch14_clip_224.openai", 1024, 14, 224, "clip"
