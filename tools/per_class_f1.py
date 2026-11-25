@@ -218,10 +218,14 @@ def main(argv=None):
 
     all_class_rows = []
     all_summary_rows = []
-    for split, filename in (
-        ("test", "iwildcam_test_predictions.csv"),
-        ("id_test", "iwildcam_id_test_predictions.csv"),
+    for split, filenames in (
+        ("test", ("iwildcam_test_predictions.csv", "test_predictions.csv")),
+        ("id_test", ("iwildcam_id_test_predictions.csv", "id_test_predictions.csv")),
     ):
+        filename = next(
+            (name for name in filenames if os.path.isfile(os.path.join(args.run_dir, name))),
+            filenames[0],
+        )
         predictions = read_predictions(os.path.join(args.run_dir, filename))
         class_rows, summary_rows = analyze_split(
             labels[split],
