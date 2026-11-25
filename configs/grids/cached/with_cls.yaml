@@ -1,0 +1,14 @@
+# 5 x 4 x 2 x 2 x 3 = 240 configurations, evaluated at seed 0 for HP selection.
+# Existing default-grid runs are reused by summary.json; only CLS rows are new.
+defaults:
+  max_epochs: 100
+  patience: 10
+  min_delta: 1.0e-4
+  min_epochs: 0
+
+grid:
+  lr: [0.0001, 0.0003, 0.001, 0.003, 0.01]
+  weight_decay: [0.0, 0.0001, 0.0005, 0.001]
+  batch_size: [256, 1024]
+  head_type: [linear, bn_linear]
+  representation_type: [last_avgpool, last4_avgpool_concat, cls]

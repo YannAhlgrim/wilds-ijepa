@@ -228,6 +228,18 @@ def main(argv=None):
     with open(os.path.join(args.features, "manifest.json"), "r") as handle:
         manifest = json.load(handle)
     _, configurations = load_grid(args.grid)
+    if any(config["representation_type"] == "cls" for config in configurations):
+        missing_cls = [
+            split for split in ("train", "val", "id_val", "id_test", "test")
+            if not manifest.get("splits", {}).get(split, {}).get("files", {}).get("cls")
+        ]
+        if missing_cls:
+            raise ValueError(
+                "CLS grid requested but the feature manifest lacks CLS entries for: "
+                + ", ".join(missing_cls)
+            )
+        if not os.path.isfile(os.path.join(args.features, "train_cls.npy")):
+            raise ValueError("CLS grid requested but train_cls.npy is missing")
     total_runs = len(configurations) * len(args.seeds)
     run_index = 0
     for config in configurations:
@@ -237,10 +249,6 @@ def main(argv=None):
             config["patience"] = args.patience
         if args.min_delta is not None:
             config["min_delta"] = args.min_delta
-        if config["representation_type"] == "cls" and not os.path.isfile(
-            os.path.join(args.features, "train_cls.npy")
-        ):
-            raise ValueError("CLS grid requested but this encoder has no cached CLS features")
         for seed in args.seeds:
             run_index += 1
             print(

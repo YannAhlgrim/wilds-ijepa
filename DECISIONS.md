@@ -25,15 +25,12 @@
   uses `num_prefix_tokens` and falls back to CLS plus `num_reg_tokens` /
   `num_register_tokens`; CLS and every register are excluded from patch means.
   `cls` returns only the normalized pre-projection CLS token as an ablation.
-- **Preprocessing follows the milestone, with one recorded caveat.** CLIP uses
-  the published OpenAI mean/std and every non-CLIP baseline uses the standard
-  ImageNet mean/std explicitly in `data.normalization`. In particular, timm's
-  metadata for `vit_huge_patch14_224.orig_in21k` advertises 0.5/0.5 original
-  checkpoint normalization, whereas the study protocol explicitly requires
-  ImageNet stats for non-CLIP baselines. The configs follow that protocol,
-  making the comparison explicit and consistent; this can be revisited
-  separately if a strict checkpoint-native supervised-ViT preprocessing
-  ablation is desired.
+- **Preprocessing follows each checkpoint's native metadata.** DINOv2 and MAE
+  use standard ImageNet mean/std; both OpenAI CLIP resolutions use the published
+  CLIP mean/std. The supervised `vit_huge_patch14_224.orig_in21k` model uses the
+  `inception` preset, mean=std=(0.5, 0.5, 0.5), matching its timm
+  `pretrained_cfg`. All six pairs are checked against the real registry in tests.
+  The earlier supervised-ViT ImageNet-preset cache is intentionally invalid.
 - **Legacy I-JEPA behavior is unchanged.** External names are dispatched only
   through an explicit registry. Legacy models still use `init_model` with the
   same arguments, including construction of its unused predictor. Missing
@@ -142,3 +139,9 @@
   indexed mini-batches to float32. Seeded training randperm and sequential eval
   replace DataLoader row reads. `drop_last=False`, label-fraction sampling,
   summary-based resume, and all author-facing sbatch commands remain unchanged.
+- **CLS extension and native supervised preprocessing.** `with_cls.yaml` reuses
+  identical default-grid slugs/summaries, adds 80 CLS rows, and re-selects over
+  the combined 240-row OOD-val pool before the usual resume-aware final stages.
+  CLS grids require manifest CLS entries/files. The supervised IN-21k config
+  now uses native 0.5/0.5 normalization; its changed config SHA invalidates the
+  old cache through the existing extraction signature check.

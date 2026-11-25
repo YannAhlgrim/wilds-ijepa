@@ -153,6 +153,22 @@ Progress lines show `[current/total]`; `epochs.csv` adds `epoch_time_seconds`,
 and `summary.json` retains per-run wall/train timings. The sbatch commands and
 environment variables are unchanged.
 
+### CLS-extended external grid
+
+For external encoders, `GRID=with_cls` selects
+`configs/grids/cached/with_cls.yaml` (240 rows); a full YAML path also works.
+The driver reuses all 160 completed default summaries, executes only the 80 CLS
+rows, and re-selects over all 240 seed-0 OOD-val results. Final-seed and label
+fraction runs use the newly selected slug and skip any identical completed runs.
+Both `probe_cached.py` and `probe_cached.sbatch` reject CLS grids when the
+manifest lacks CLS entries/files. Example:
+
+```bash
+GRID=with_cls DEVICE=cuda bash tools/run_cached_protocol.sh dinov2_vitl14 experiment_logs/features/dinov2_vitl14 experiment_logs/cached-runs
+```
+
+The default remains `configs/grids/cached/default.yaml` (160 rows).
+
 The underlying individual commands are:
 
 ```bash

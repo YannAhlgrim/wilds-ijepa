@@ -12,6 +12,9 @@ OUT="$3"
 PYTHON="${PYTHON:-python3}"
 DEVICE="${DEVICE:-cpu}"
 GRID="${GRID:-configs/grids/cached/default.yaml}"
+case "${GRID}" in
+  default|with_cls) GRID="configs/grids/cached/${GRID}.yaml" ;;
+esac
 MAX_EPOCHS="${MAX_EPOCHS:-100}"
 SEEDS="${SEEDS:-0 1 2 3 4}"
 
