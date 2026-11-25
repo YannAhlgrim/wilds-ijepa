@@ -75,6 +75,17 @@ See [docs/baselines.md](docs/baselines.md#analysis-commands) for checkpoint-base
 bash tools/export_artifacts.sh --root experiment_logs --output-dir .
 ```
 
+## Cached-feature protocol
+
+For the unified validation-selected protocol across all 13 encoders, extract frozen features once and probe them on CPU or one GPU:
+
+```bash
+python3 tools/extract_features.py --config configs/supervised_vith14_224_in22k.yaml --out experiment_logs/features/vith14_224_in22k --dtype float16
+DEVICE=cuda bash tools/run_cached_protocol.sh vith14_224_in22k experiment_logs/features/vith14_224_in22k experiment_logs/cached-runs
+```
+
+This runs the 160-config seed-0 OOD-val grid, five final seeds, and label fractions. See [docs/cached_protocol.md](docs/cached_protocol.md) for every encoder command, resume behavior, disk/time estimates, and paper outputs.
+
 ## WILDS submission packaging
 
 ```bash

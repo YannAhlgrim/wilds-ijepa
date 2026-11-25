@@ -101,3 +101,31 @@
   pattern naturally covers supervised `linear_probe_r*.csv` and pretraining
   `jepa_r*.csv` loss logs. Checkpoints, images, and WILDS data are excluded;
   same-day archives are not overwritten.
+
+## 2026-11-25 — Cached-feature probe protocol (M5)
+
+- **Existing probe paths remain untouched.** Extraction adds a cache-specific
+  one-pass method to the external adapter but does not change legacy forward
+  behavior or any existing YAML. Both average and last-four-layer patch
+  representations use the same final normalization as `ViTClassifier`; cached
+  CLS is the last normalized pre-projection token.
+- **Official metrics without images.** `IWildCamDataset.eval` was inspected and
+  only constructs Accuracy/Recall/F1 objects. The cache invokes that unmodified
+  method on an uninitialized evaluator with tensors and shape-checks metadata;
+  no substitute metric implementation is used. Synthetic tests compare direct
+  official evaluation and WILDS metric classes.
+- **Resume and reproducibility.** Split arrays use fixed hidden partial `.npy`
+  files and a signature containing config/checkpoint hashes, dtype, and limit.
+  Progress is committed through all but the final batch so a crash during final
+  renaming only recomputes the last chunk. The manifest is the completion
+  marker. Local checkpoint files use file SHA-256; public timm models use a
+  loaded-state SHA-256 because timm does not uniformly expose the cache file.
+- **Selection protocol.** Early stopping maximizes OOD-val macro-F1 with
+  patience 10/min-delta 1e-4 and no minimum-epoch constraint. BN uses the true
+  mini-batch without accumulation. Test is evaluated only after restoring the
+  best head. Seed-0 grid runs select HPs; five-seed runs never change the HP
+  choice. OOD-test selection is shown only as an audit diagnostic.
+- **Resource estimates.** Disk tables use exact Source counts and dimensions;
+  all-split totals and extraction times are explicitly estimates. Non-train
+  split sizes and L40S throughput were not available locally, so no fabricated
+  measured runtime is reported.
