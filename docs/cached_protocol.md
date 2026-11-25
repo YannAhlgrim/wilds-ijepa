@@ -41,6 +41,73 @@ completed ones. Local checkpoint files are SHA-256 hashed. Public timm weights
 use a `timm://<identifier>` source plus a SHA-256 fingerprint of the loaded
 encoder state. Random initialization records its fixed seed.
 
+### SLURM pilot and full submission
+
+The scripts in `tools/slurm/` use one node/task/GPU, 8 CPUs, 64 GB RAM, and
+conservative 3-hour extraction / 12-hour probing limits. No partition is
+hardcoded. Create the log directory once and optionally set `VENV` to an
+existing environment. If compute nodes have no internet, prefetch the six
+public external models on a login node first; this honors `HF_HOME`/`TORCH_HOME`:
+
+```bash
+mkdir -p slurm_logs
+python3 tools/prefetch_weights.py --keys dinov2_vitg14 dinov2_vitl14 mae_vith14 sup_vith14_in21k clip_vitl14 clip_vitl14_336
+```
+
+Pilot one encoder at 256 images per split, then run its cached probe only after
+extraction succeeds. `--parsable` returns the job ID used in the dependency;
+the optional job-name arguments make queue output immediately identifiable.
+Scripts also rename their own running jobs as a fallback.
+
+```bash
+PARTITION=<your-partition>
+KEY=vith14_224_in22k
+export LIMIT=256
+EXTRACT_JOB="$(sbatch --parsable --partition="$PARTITION" --job-name="extract-${KEY}" --export=ALL,KEY="${KEY}" tools/slurm/extract_features.sbatch)"
+EXTRACT_JOB="${EXTRACT_JOB%%;*}"
+PROBE_JOB="$(sbatch --parsable --partition="$PARTITION" --job-name="probe-${KEY}" --dependency="afterok:${EXTRACT_JOB}" --export=ALL,KEY="${KEY}" tools/slurm/probe_cached.sbatch)"
+PROBE_JOB="${PROBE_JOB%%;*}"
+echo "Pilot jobs: ${EXTRACT_JOB} -> ${PROBE_JOB}"
+squeue -u "$USER"
+sacct -j "${EXTRACT_JOB},${PROBE_JOB}" --format=JobID,JobName%40,State,Elapsed,MaxRSS
+unset LIMIT
+```
+
+After checking the pilot manifest, logs, metrics, and actual elapsed time, submit
+all full encoders. Each probe has its own `afterok` dependency on exactly one
+extraction. Remove `--job-name` if the cluster disallows duplicate names before
+the script's `scontrol` rename; job dependency IDs remain unambiguous.
+
+```bash
+for KEY in vith14_224_in1k vith16_448_in1k vith14_224_in22k vitg16_224_in22k vith14_224 vitb16_448 vith14_224_randinit dinov2_vitg14 dinov2_vitl14 mae_vith14 sup_vith14_in21k clip_vitl14 clip_vitl14_336; do
+  EXTRACT_JOB="$(sbatch --parsable --partition="$PARTITION" --job-name="extract-${KEY}" --export=ALL,KEY="${KEY}" tools/slurm/extract_features.sbatch)"
+  EXTRACT_JOB="${EXTRACT_JOB%%;*}"
+  PROBE_JOB="$(sbatch --parsable --partition="$PARTITION" --job-name="probe-${KEY}" --dependency="afterok:${EXTRACT_JOB}" --export=ALL,KEY="${KEY}" tools/slurm/probe_cached.sbatch)"
+  PROBE_JOB="${PROBE_JOB%%;*}"
+  echo "${KEY}: ${EXTRACT_JOB} -> ${PROBE_JOB}"
+done
+squeue -u "$USER"
+sacct -u "$USER" --starttime "$(date +%Y-%m-%d)" --format=JobID,JobName%40,State,Elapsed,MaxRSS
+```
+
+Overrides such as `FEATURES_ROOT`, `RUNS_ROOT`, `DEVICE`, `MAX_EPOCHS`, `GRID`,
+`SEEDS`, `PYTHON`, and `VENV` are passed through `--export=ALL`. The probe refuses
+to run unless all five manifest splits are complete and their arrays exist.
+
+After every encoder completes, export the small results and feature manifests,
+inspect the archive, and only then reclaim feature space. This deletion is
+intentional and irreversible; the encoder forward passes would be required to
+recreate the arrays. Do not delete features while jobs are pending/running.
+
+```bash
+bash tools/export_artifacts.sh --root experiment_logs --output-dir .
+ARCHIVE="tmlr_artifacts_$(date -u +%Y%m%d).tar.gz"
+tar -tzf "${ARCHIVE}" | less
+squeue -u "$USER"
+# After verifying cached_selection outputs and the archive:
+rm -rf -- experiment_logs/features
+```
+
 ## 2. Run selection, five seeds, and label fractions
 
 On a workstation with enough RAM, or inside one small GPU allocation, run:

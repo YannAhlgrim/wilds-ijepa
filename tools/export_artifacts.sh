@@ -49,7 +49,9 @@ trap 'rm -f "${LIST}"' EXIT
 
 # src/train.py writes pretraining loss as <write_tag>_r<rank>.csv (normally
 # jepa_r0.csv) in its logging folder. The *_r[0-9]*.csv rule includes both those
-# logs and supervised per-epoch linear_probe_r*.csv files.
+# logs and supervised per-epoch linear_probe_r*.csv files. Cached runs add
+# epochs.csv, summaries/predictions, selected grids, and cached_selection.*.
+# Only features/<KEY>/manifest.json is included; never .npy feature arrays.
 (
   cd "${ROOT_PARENT}"
   find "${ROOT_NAME}" \
@@ -58,9 +60,15 @@ trap 'rm -f "${LIST}"' EXIT
       -name '*_metrics.json' -o \
       -name '*_predictions.csv' -o \
       -name '*_r[0-9]*.csv' -o \
+      -name 'epochs.csv' -o \
       -name 'params*.yaml' -o \
+      -name '*_selected.yaml' -o \
       -name 'summary*.json' -o \
-      -name 'summary*.csv' \
+      -name 'summary*.csv' -o \
+      -name 'cached_selection.json' -o \
+      -name 'cached_selection.csv' -o \
+      -name 'cached_selection.tex' -o \
+      -path '*/features/*/manifest.json' \
     \) -print | LC_ALL=C sort
 ) > "${LIST}"
 

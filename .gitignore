@@ -7,4 +7,5 @@ tmlr_artifacts_*.tar.gz
 experiment_logs/
 wilds_data/
 submitit_logs/
+slurm_logs/
 test.py

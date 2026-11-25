@@ -16,10 +16,20 @@ def test_export_artifacts_includes_only_small_result_files(tmp_path):
         run / "params.yaml": "meta: {}",
         root / "seed-runs" / "summary_all.csv": "model\nrun\n",
         pretrain / "jepa_r0.csv": "epoch,itr,loss\n1,0,0.5\n",
+        root / "cached-runs" / "enc" / "seeds" / "seed0" / "cfg" / "summary.json": "{}",
+        root / "cached-runs" / "enc" / "seeds" / "seed0" / "cfg" / "epochs.csv": "epoch,val_f1\n1,0.5\n",
+        root / "cached-runs" / "enc" / "seeds" / "seed0" / "cfg" / "test_predictions.csv": "0\n",
+        root / "cached-runs" / "enc" / "selection" / "cached_selection.json": "{}",
+        root / "cached-runs" / "enc" / "selection" / "cached_selection.csv": "encoder_key\nenc\n",
+        root / "cached-runs" / "enc" / "selection" / "cached_selection.tex": "% rows\n",
+        root / "cached-runs" / "enc" / "selection" / "enc_selected.yaml": "grid: {}\n",
+        root / "features" / "enc" / "manifest.json": "{}",
     }
     (root / "seed-runs").mkdir()
     for path, content in allowed.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+    (root / "features" / "enc" / "train_last_avgpool.npy").write_bytes(b"not exported")
     (run / "best_model.pth.tar").write_bytes(b"checkpoint")
     (run / "image.png").write_bytes(b"image")
     wilds = root / "wilds_data"
@@ -44,5 +54,7 @@ def test_export_artifacts_includes_only_small_result_files(tmp_path):
     assert len(names) == len(allowed)
     assert any(name.endswith("jepa_r0.csv") for name in names)
     assert any(name.endswith("linear_probe_r0.csv") for name in names)
-    assert not any(name.endswith((".pth", ".pth.tar", ".png")) for name in names)
+    assert any(name.endswith("features/enc/manifest.json") for name in names)
+    assert any(name.endswith("cached_selection.csv") for name in names)
+    assert not any(name.endswith((".pth", ".pth.tar", ".png", ".npy")) for name in names)
     assert not any("wilds_data" in name for name in names)

@@ -129,3 +129,11 @@
   all-split totals and extraction times are explicitly estimates. Non-train
   split sizes and L40S throughput were not available locally, so no fabricated
   measured runtime is reported.
+- **SLURM and offline caches.** Plain sbatch wrappers leave partition selection
+  to the submit command and rename the caller-owned job with the encoder key.
+  Probe jobs validate all required manifest arrays before invoking the driver.
+  Weight prefetching downloads only timm-resolved public external models without
+  model construction, using standard HF_HOME/TORCH_HOME caches. Artifact export
+  includes cached selection/prediction/epoch files and feature manifests but no
+  feature arrays, so documented feature cleanup is safe only after archive
+  verification and job completion.
