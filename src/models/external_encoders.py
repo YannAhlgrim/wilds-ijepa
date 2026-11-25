@@ -155,6 +155,31 @@ class TimmExternalEncoder(nn.Module):
                 raise ValueError("Intermediate external feature width does not match embed_dim")
         return layer_outputs[-1], layer_outputs
 
+    def forward_for_cache(self, x, num_last_layers=4):
+        """Return normalized patch layers and CLS from one intermediate pass."""
+        output = self.backbone.forward_intermediates(
+            x,
+            indices=int(num_last_layers),
+            return_prefix_tokens=self._has_class_token,
+            norm=True,
+            stop_early=False,
+            output_fmt="NLC",
+            intermediates_only=True,
+        )
+        layers = []
+        cls = None
+        for item in output:
+            if isinstance(item, tuple) and len(item) == 2:
+                patch_tokens, prefix_tokens = item
+                layers.append(patch_tokens)
+                if prefix_tokens is not None and prefix_tokens.shape[1]:
+                    cls = prefix_tokens[:, 0]
+            else:
+                layers.append(item)
+        if len(layers) != num_last_layers:
+            raise ValueError("Unexpected number of timm intermediate layers")
+        return layers[-1], layers, cls
+
     def forward_cls(self, x):
         """Return the normalized, pre-projection CLS token (an ablation only)."""
         if not self._has_class_token or self._num_prefix_tokens < 1:
