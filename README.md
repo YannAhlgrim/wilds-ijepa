@@ -4,16 +4,25 @@ This fork of [facebookresearch/ijepa](https://github.com/facebookresearch/ijepa)
 
 ## Results
 
-Mean ± sample standard deviation over five seeds for ImageNet-pretrained I-JEPA checkpoints. Gap is `ID F1 − OOD F1`.
+Final cached-protocol results with OOD-validation-selected hyperparameters; mean ± sample standard deviation over five seeds. Retention is `R = OOD F1 / ID F1`.
 
-| Model | ID F1 | OOD F1 | Gap | R |
-|---|---:|---:|---:|---:|
-| ViT-H/14 (224, IN-1K) | 0.338 ± 0.015 | 0.214 ± 0.006 | 0.124 | 0.63 |
-| ViT-H/16 (448, IN-1K) | 0.385 ± 0.005 | 0.247 ± 0.003 | 0.138 | 0.64 |
-| **ViT-H/14 (224, IN-22K)** | 0.348 ± 0.003 | **0.260 ± 0.003** | 0.088 | 0.75 |
-| ViT-g/16 (224, IN-22K) | 0.371 ± 0.002 | 0.255 ± 0.003 | 0.116 | 0.69 |
+| Model | OOD macro-F1 | ID macro-F1 | R | Readout |
+|---|---:|---:|---:|---|
+| I-JEPA ViT-H/14 IN-1K | 0.242 ± 0.010 | 0.387 ± 0.009 | 0.62 | Avg last layer |
+| I-JEPA ViT-H/16@448 IN-1K | 0.255 ± 0.011 | 0.420 ± 0.019 | 0.61 | Avg last 4 |
+| I-JEPA ViT-H/14 IN-22K | 0.256 ± 0.006 | 0.403 ± 0.014 | 0.63 | Avg last 4 |
+| I-JEPA ViT-g/16 IN-22K | 0.278 ± 0.006 | 0.419 ± 0.008 | 0.67 | Avg last 4 |
+| I-JEPA ViT-H/14 iWildCam-pretrained | 0.081 ± 0.002 | 0.255 ± 0.013 | 0.32 | — |
+| I-JEPA ViT-B/16@448 iWildCam-pretrained | 0.046 ± 0.006 | 0.201 ± 0.012 | 0.23 | — |
+| ViT-H/14 random init | 0.047 ± 0.005 | 0.105 ± 0.013 | 0.45 | — |
+| DINOv2 ViT-L/14 | 0.463 ± 0.006 | 0.569 ± 0.016 | 0.81 | CLS |
+| DINOv2 ViT-g/14 | 0.488 ± 0.004 | 0.600 ± 0.006 | 0.81 | CLS |
+| CLIP ViT-L/14@224 | 0.348 ± 0.009 | 0.449 ± 0.020 | 0.78 | CLS |
+| CLIP ViT-L/14@336 | 0.368 ± 0.010 | 0.516 ± 0.015 | 0.71 | CLS |
+| Supervised IN-21k ViT-H/14 | 0.259 ± 0.006 | 0.378 ± 0.003 | 0.68 | CLS |
+| MAE ViT-H/14 | 0.214 ± 0.002 | 0.380 ± 0.010 | 0.56 | CLS |
 
-**Hyperparameter re-selection on OOD validation is pending; these numbers are retained from the existing runs.**
+Older numbers in previous commits (thesis) used test-split-ranked hyperparameters and loss-based early stopping and are superseded.
 
 ## Install and data
 
@@ -86,12 +95,9 @@ DEVICE=cuda bash tools/run_cached_protocol.sh vith14_224_in22k experiment_logs/f
 
 This runs the 160-config seed-0 OOD-val grid, five final seeds, and label fractions. See [docs/cached_protocol.md](docs/cached_protocol.md) for every encoder command, resume behavior, disk/time estimates, and paper outputs.
 
-## WILDS submission packaging
+## WILDS evaluation
 
-```bash
-python3 tools/generate_wilds_submission.py --submission-name vith14_224_in22k --eval-root experiment_logs/eval-wilds --out-dir .
-```
-This creates the upload tarball, verification F1 file, and per-seed checkpoints; see [docs/reproducibility.md](docs/reproducibility.md) for run outputs and details.
+The public WILDS leaderboard no longer accepts submissions; predictions can be evaluated locally with WILDS' examples/evaluate.py.
 
 ## Licenses
 
@@ -99,4 +105,4 @@ I-JEPA and MAE code/weights are CC BY-NC 4.0; DINOv2, timm, and supervised origi
 
 ## Citation
 
-Citation information will be added when the paper is public.
+Paper under review; citation information will be added later.
