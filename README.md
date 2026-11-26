@@ -12,9 +12,9 @@ Final cached-protocol results with OOD-validation-selected hyperparameters; mean
 | I-JEPA ViT-H/16@448 IN-1K | 0.255 ± 0.011 | 0.420 ± 0.019 | 0.61 | Avg last 4 |
 | I-JEPA ViT-H/14 IN-22K | 0.256 ± 0.006 | 0.403 ± 0.014 | 0.63 | Avg last 4 |
 | I-JEPA ViT-g/16 IN-22K | 0.278 ± 0.006 | 0.419 ± 0.008 | 0.67 | Avg last 4 |
-| I-JEPA ViT-H/14 iWildCam-pretrained | 0.081 ± 0.002 | 0.255 ± 0.013 | 0.32 | — |
-| I-JEPA ViT-B/16@448 iWildCam-pretrained | 0.046 ± 0.006 | 0.201 ± 0.012 | 0.23 | — |
-| ViT-H/14 random init | 0.047 ± 0.005 | 0.105 ± 0.013 | 0.45 | — |
+| I-JEPA ViT-H/14 iWildCam-pretrained | 0.081 ± 0.002 | 0.255 ± 0.013 | 0.32 | Avg last 4 |
+| I-JEPA ViT-B/16@448 iWildCam-pretrained | 0.046 ± 0.006 | 0.201 ± 0.012 | 0.23 | Avg last 4 |
+| ViT-H/14 random init | 0.047 ± 0.005 | 0.105 ± 0.013 | 0.45 | Avg last 4 |
 | DINOv2 ViT-L/14 | 0.463 ± 0.006 | 0.569 ± 0.016 | 0.81 | CLS |
 | DINOv2 ViT-g/14 | 0.488 ± 0.004 | 0.600 ± 0.006 | 0.81 | CLS |
 | CLIP ViT-L/14@224 | 0.348 ± 0.009 | 0.449 ± 0.020 | 0.78 | CLS |
