@@ -101,33 +101,12 @@ This writes `experiment_logs/seed-runs/<model>/summary.json` and
 `retention_macro_f1_mean` and `retention_macro_f1_std`; each per-seed ratio is
 computed before aggregation (it is not the ratio of mean F1 values).
 
-## GPU-hour planning estimates
+## Measured cost
 
-No baseline training was run on the development machine. These are conservative
-**planning estimates**, not measurements: one A100/H100-class GPU per run,
-roughly 25 epochs after early stopping, including validation and the four final
-evaluation passes. Hardware, image I/O, and stopping time can readily change
-them by 0.5–2x. Replace estimates with the actual `train_time_seconds` fields
-after a pilot run.
-
-| Encoder | Estimated GPU-hours/run | HP: 8 runs | Seeds: 5 runs |
-|---|---:|---:|---:|
-| DINOv2 ViT-g/14 | 16 | 128 | 80 |
-| DINOv2 ViT-L/14 | 8 | 64 | 40 |
-| MAE ViT-H/14 | 10 | 80 | 50 |
-| Supervised IN-21k ViT-H/14 | 10 | 80 | 50 |
-| OpenAI CLIP ViT-L/14 (224) | 8 | 64 | 40 |
-| OpenAI CLIP ViT-L/14 (336) | 14 | 112 | 70 |
-| **Total** | | **528** | **330** |
-
-The complete HP + five-seed study therefore has a conservative upper budget of **858
-GPU-hours**. Actual aggregate time is available in `summary_all.csv`.
-
-**Measured reference (I-JEPA probes, thesis runs, one NVIDIA L40S, micro-batch 16):** all
-runs early-stopped after 14 epochs; ViT-H/14 @224 took 2.35–2.38 h per run, ViT-g/16 @224
-2.74 h, ViT-H/16 @448 13.97 h. Scaling by these numbers, a realistic budget is
-≈ 2.5–3 h/run for the 224 px baselines and ≈ 6–8 h/run for CLIP ViT-L/14 @336, i.e. roughly
-**200–250 GPU-hours** for the full study (13 runs × 6 encoders). Run one pilot per encoder first.
+With the cached-feature protocol (`docs/cached_protocol.md`), each encoder needs one feature
+extraction pass over the five labeled splits (6–86 min on one NVIDIA L40S, 7 GB peak GPU memory at
+most) and 10–30 min for all grid, seed and label-fraction probes. The complete study of 13 encoders
+took about 4.3 GPU-hours of extraction and 3.3 GPU-hours of probing.
 
 ## Analysis commands
 

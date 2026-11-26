@@ -22,8 +22,6 @@ Final cached-protocol results with OOD-validation-selected hyperparameters; mean
 | Supervised IN-21k ViT-H/14 | 0.259 ± 0.006 | 0.378 ± 0.003 | 0.68 | CLS |
 | MAE ViT-H/14 | 0.214 ± 0.002 | 0.380 ± 0.010 | 0.56 | CLS |
 
-Older numbers in previous commits (thesis) used test-split-ranked hyperparameters and loss-based early stopping and are superseded.
-
 ## Install and data
 
 ```bash
